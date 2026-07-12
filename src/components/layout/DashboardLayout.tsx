@@ -29,4 +29,71 @@ export default function DashboardLayout() {
               to={to}
               end={end}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive ? 'bg-primary-600 text-white' : 'text-primary-200 hover:bg-primary-700'
+                }`
+              }
+            >
+              <Icon size={18} />
+              {label}
+            </NavLink>
+          ))}
+
+          <button
+            disabled
+            title="Bientôt disponible"
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-primary-400 cursor-not-allowed"
+          >
+            <ScanLine size={18} />
+            Scanner
+          </button>
+        </nav>
+
+        <div className="px-3 pb-4 space-y-1 border-t border-primary-700 pt-3">
+          <NavLink
+            to="/profil"
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${
+                isActive ? 'bg-primary-600' : 'text-primary-200 hover:bg-primary-700'
+              }`
+            }
+          >
+            <UserCircle size={18} />
+            {profile?.full_name ?? 'Mon profil'}
+          </NavLink>
+          <button
+            onClick={() => signOut()}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-primary-200 hover:bg-primary-700"
+          >
+            <LogOut size={18} />
+            Déconnexion
+          </button>
+        </div>
+      </aside>
+
+      <main className="flex-1 pb-20 md:pb-0">
+        <div className="max-w-5xl mx-auto px-4 py-6">
+          <Outlet />
+        </div>
+      </main>
+
+      <nav className="md:hidden fixed bottom-0 inset-x-0 bg-white border-t border-primary-100 flex justify-around py-2 z-10">
+        {navItems.map(({ to, label, icon: Icon, end }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={end}
+            className={({ isActive }) =>
+              `flex flex-col items-center gap-0.5 px-2 py-1 text-xs ${
+                isActive ? 'text-primary-600' : 'text-primary-400'
+              }`
+            }
+          >
+            <Icon size={20} />
+            {label.split(' ')[0]}
+          </NavLink>
+        ))}
+      </nav>
+    </div>
+  )
+      }
