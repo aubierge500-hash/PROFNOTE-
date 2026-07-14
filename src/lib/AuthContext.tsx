@@ -22,16 +22,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   async function loadProfile(userId: string) {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single()
-    setProfile(data as Profile | null)
+    try {
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
+      if (error) {
+        console.error('[Auth] Erreur de chargement du profil :', error.message)
+        return
+      }
+      setProfile(data as Profile | null)
+    } catch (err) {
+      console.error('[Auth] Exception lors du chargement du profil :', err)
+    }
   }
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session)
-      if (data.session?.user) loadProfile(data.session.user.id)
-      setLoading(false)
-    })
+    let resolved = false
+
+    const safetyTimeout = setTimeout(() => {
+      if (!resolved) {
+        console.warn('[Auth] Délai dépassé en attendant Supabase — affichage de la connexion par défaut.')
+        resolved = true
+        setLoading(false)
+      }
+    }, 8000)
+
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (resolved) return
+        resolved = true
+        clearTimeout(safetyTimeout)
+        setSession(data.session)
+        if (data.session?.user) void loadProfile(data.session.user.id)
+        setLoading(false)
+      })
+      .catch((err) => {
+        console.error('[Auth] Erreur lors de la vérification de session :', err)
+        if (!resolved) {
+          resolved = true
+          clearTimeout(safetyTimeout)
+          setLoading(false)
+        }
+      })
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession)
@@ -42,7 +73,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })
 
-    return () => listener.subscription.unsubscribe()
+    return () => {
+      clearTimeout(safetyTimeout)
+      listener.subscription.unsubscribe()
+    }
   }, [])
 
   async function signIn(email: string, password: string) {
@@ -93,4 +127,4 @@ function traduireErreur(message: string): string {
     'Password should be at least 6 characters': 'Le mot de passe doit contenir au moins 6 caractères.'
   }
   return map[message] ?? message
-}
+      }
