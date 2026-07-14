@@ -1,7 +1,8 @@
 import { useEffect, useState, type ChangeEvent } from 'react'
 import * as XLSX from 'xlsx'
 import Papa from 'papaparse'
-import { Plus, Upload, Trash2 } from 'lucide-react'
+import { Plus, Upload, Trash2, ChevronRight } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/AuthContext'
 import type { SchoolClass, Student } from '@/types/database'
@@ -17,6 +18,7 @@ interface ImportedRow {
 
 export default function Students() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [classes, setClasses] = useState<SchoolClass[]>([])
   const [selectedClass, setSelectedClass] = useState<string>('')
   const [students, setStudents] = useState<Student[]>([])
@@ -189,18 +191,28 @@ export default function Students() {
       ) : (
         <div className="card divide-y divide-primary-100">
           {students.map((s) => (
-            <div key={s.id} className="py-2.5 flex items-center justify-between text-sm">
+            <div
+              key={s.id}
+              onClick={() => navigate(`/eleves/${s.id}`)}
+              className="py-2.5 flex items-center justify-between text-sm cursor-pointer hover:bg-primary-50 -mx-5 px-5 rounded-lg"
+            >
               <div>
                 <p className="font-medium text-primary-800">{s.last_name} {s.first_name}</p>
                 <p className="text-xs text-primary-400">{s.gender ?? ''} {s.parent_whatsapp ? `· ${s.parent_whatsapp}` : ''}</p>
               </div>
-              <button onClick={() => handleDelete(s)} className="p-2 text-danger hover:bg-red-50 rounded-lg">
-                <Trash2 size={16} />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDelete(s) }}
+                  className="p-2 text-danger hover:bg-red-100 rounded-lg"
+                >
+                  <Trash2 size={16} />
+                </button>
+                <ChevronRight size={16} className="text-primary-300" />
+              </div>
             </div>
           ))}
         </div>
       )}
     </div>
   )
-}
+  }

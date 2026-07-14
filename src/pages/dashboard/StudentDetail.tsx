@@ -173,4 +173,4 @@ export default function StudentDetail() {
       </div>
     </div>
   )
-}
+  }
