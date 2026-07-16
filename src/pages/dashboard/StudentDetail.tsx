@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, TrendingUp, Award, TrendingDown, Users } from 'lucide-react'
+import { ArrowLeft, TrendingUp, Award, TrendingDown, Users, Download } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/lib/AuthContext'
+import { exportStudentBulletinPDF } from '@/lib/exports'
 import type { Student, StudentRanking } from '@/types/database'
 
 interface HistoryRow {
@@ -20,12 +22,15 @@ interface HistoryRow {
 export default function StudentDetail() {
   const { studentId } = useParams<{ studentId: string }>()
   const navigate = useNavigate()
+  const { profile } = useAuth()
 
   const [student, setStudent] = useState<Student | null>(null)
   const [history, setHistory] = useState<HistoryRow[]>([])
   const [ranking, setRanking] = useState<StudentRanking | null>(null)
   const [classSize, setClassSize] = useState<number>(0)
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
+  const [className, setClassName] = useState('')
 
   useEffect(() => {
     if (studentId) void loadData(studentId)
@@ -42,13 +47,14 @@ export default function StudentDetail() {
       return
     }
 
-    const [historyRes, rankingRes, classCountRes] = await Promise.all([
+    const [historyRes, rankingRes, classCountRes, classRes] = await Promise.all([
       supabase
         .from('grades')
         .select('id, score, is_absent, evaluation_id, evaluations(id, title, subject, eval_date, coefficient, max_score)')
         .eq('student_id', id),
       supabase.from('student_rankings').select('*').eq('student_id', id).single(),
-      supabase.from('students').select('id', { count: 'exact', head: true }).eq('class_id', (studentData as Student).class_id).eq('is_active', true)
+      supabase.from('students').select('id', { count: 'exact', head: true }).eq('class_id', (studentData as Student).class_id).eq('is_active', true),
+      supabase.from('classes').select('name').eq('id', (studentData as Student).class_id).single()
     ])
 
     const rows: HistoryRow[] = ((historyRes.data as any[]) ?? [])
@@ -69,6 +75,7 @@ export default function StudentDetail() {
     setHistory(rows)
     setRanking((rankingRes.data as StudentRanking) ?? null)
     setClassSize(classCountRes.count ?? 0)
+    setClassName((classRes.data as { name: string } | null)?.name ?? '')
     setLoading(false)
   }
 
@@ -80,6 +87,25 @@ export default function StudentDetail() {
     name: new Date(r.eval_date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
     note: Math.round((r.score! / r.max_score) * 20 * 100) / 100
   }))
+
+  async function handleExportPDF() {
+    if (!student) return
+    setExporting(true)
+    try {
+      await exportStudentBulletinPDF(
+        student.id,
+        `${student.last_name} ${student.first_name}`,
+        student.class_id,
+        className,
+        profile
+      )
+    } catch (err) {
+      console.error('[Export] Erreur lors de la génération du bulletin :', err)
+      alert("Une erreur est survenue lors de la génération du bulletin. Réessayez dans un instant.")
+    } finally {
+      setExporting(false)
+    }
+  }
 
   if (loading) {
     return <p className="text-sm text-primary-400">Chargement…</p>
@@ -102,11 +128,17 @@ export default function StudentDetail() {
         <ArrowLeft size={16} /> Retour aux élèves
       </button>
 
-      <div>
-        <h1 className="text-xl font-semibold text-primary-800">{student.last_name} {student.first_name}</h1>
-        <p className="text-sm text-primary-500">
-          {student.gender ?? ''} {student.parent_whatsapp ? `· Parent : ${student.parent_whatsapp}` : ''}
-        </p>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-primary-800">{student.last_name} {student.first_name}</h1>
+          <p className="text-sm text-primary-500">
+            {student.gender ?? ''} {student.parent_whatsapp ? `· Parent : ${student.parent_whatsapp}` : ''}
+          </p>
+        </div>
+        <button onClick={handleExportPDF} disabled={exporting} className="btn-secondary flex items-center gap-1.5 text-sm whitespace-nowrap">
+          <Download size={16} />
+          {exporting ? 'Génération…' : 'Bulletin PDF'}
+        </button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -173,4 +205,4 @@ export default function StudentDetail() {
       </div>
     </div>
   )
-}
+    }
