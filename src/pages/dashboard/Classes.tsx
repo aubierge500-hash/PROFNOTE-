@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react'
-import { Plus, Archive, Trash2, Pencil } from 'lucide-react'
+import { Plus, Archive, Trash2, Pencil, FileSpreadsheet, FileText } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/AuthContext'
+import { exportClassExcel, exportClassBulletinsPDF } from '@/lib/exports'
 import type { SchoolClass } from '@/types/database'
 
 export default function Classes() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [classes, setClasses] = useState<SchoolClass[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<SchoolClass | null>(null)
   const [name, setName] = useState('')
   const [level, setLevel] = useState('')
+  const [exportingId, setExportingId] = useState<string | null>(null)
 
   useEffect(() => {
     if (user) void loadClasses()
@@ -65,6 +67,30 @@ export default function Classes() {
     void loadClasses()
   }
 
+  async function handleExportExcel(c: SchoolClass) {
+    setExportingId(`excel-${c.id}`)
+    try {
+      await exportClassExcel(c.id, c.name, profile)
+    } catch (err) {
+      console.error('[Export] Erreur lors de la génération du relevé Excel :', err)
+      alert("Une erreur est survenue lors de la génération du relevé. Réessayez dans un instant.")
+    } finally {
+      setExportingId(null)
+    }
+  }
+
+  async function handleExportBulletins(c: SchoolClass) {
+    setExportingId(`pdf-${c.id}`)
+    try {
+      await exportClassBulletinsPDF(c.id, c.name, profile)
+    } catch (err) {
+      console.error('[Export] Erreur lors de la génération des bulletins :', err)
+      alert("Une erreur est survenue lors de la génération des bulletins. Réessayez dans un instant.")
+    } finally {
+      setExportingId(null)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -98,20 +124,40 @@ export default function Classes() {
       ) : (
         <div className="grid gap-3">
           {classes.map((c) => (
-            <div key={c.id} className={`card flex items-center justify-between ${c.is_archived ? 'opacity-50' : ''}`}>
-              <div>
-                <p className="font-medium text-primary-800">{c.name}</p>
-                <p className="text-xs text-primary-400">{c.level} · {c.school_year}{c.is_archived ? ' · Archivée' : ''}</p>
+            <div key={c.id} className={`card ${c.is_archived ? 'opacity-50' : ''}`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-primary-800">{c.name}</p>
+                  <p className="text-xs text-primary-400">{c.level} · {c.school_year}{c.is_archived ? ' · Archivée' : ''}</p>
+                </div>
+                <div className="flex gap-1">
+                  <button onClick={() => openEdit(c)} className="p-2 text-primary-500 hover:bg-primary-50 rounded-lg">
+                    <Pencil size={16} />
+                  </button>
+                  <button onClick={() => toggleArchive(c)} className="p-2 text-primary-500 hover:bg-primary-50 rounded-lg">
+                    <Archive size={16} />
+                  </button>
+                  <button onClick={() => handleDelete(c)} className="p-2 text-danger hover:bg-red-50 rounded-lg">
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-1">
-                <button onClick={() => openEdit(c)} className="p-2 text-primary-500 hover:bg-primary-50 rounded-lg">
-                  <Pencil size={16} />
+              <div className="flex gap-2 mt-3 pt-3 border-t border-primary-100">
+                <button
+                  onClick={() => handleExportExcel(c)}
+                  disabled={exportingId === `excel-${c.id}`}
+                  className="btn-secondary flex items-center gap-1.5 text-xs py-1.5"
+                >
+                  <FileSpreadsheet size={14} />
+                  {exportingId === `excel-${c.id}` ? 'Génération…' : 'Relevé Excel'}
                 </button>
-                <button onClick={() => toggleArchive(c)} className="p-2 text-primary-500 hover:bg-primary-50 rounded-lg">
-                  <Archive size={16} />
-                </button>
-                <button onClick={() => handleDelete(c)} className="p-2 text-danger hover:bg-red-50 rounded-lg">
-                  <Trash2 size={16} />
+                <button
+                  onClick={() => handleExportBulletins(c)}
+                  disabled={exportingId === `pdf-${c.id}`}
+                  className="btn-secondary flex items-center gap-1.5 text-xs py-1.5"
+                >
+                  <FileText size={14} />
+                  {exportingId === `pdf-${c.id}` ? 'Génération…' : 'Bulletins PDF'}
                 </button>
               </div>
             </div>
@@ -120,4 +166,4 @@ export default function Classes() {
       )}
     </div>
   )
-    }
+         }
