@@ -3,6 +3,7 @@ import { Plus, Archive, Trash2, Pencil, FileSpreadsheet, FileText } from 'lucide
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/AuthContext'
 import { exportClassExcel, exportClassBulletinsPDF } from '@/lib/exports'
+import ClassWhatsAppSendButton from '@/components/ClassWhatsAppSendButton'
 import type { SchoolClass } from '@/types/database'
 
 export default function Classes() {
@@ -142,7 +143,7 @@ export default function Classes() {
                   </button>
                 </div>
               </div>
-              <div className="flex gap-2 mt-3 pt-3 border-t border-primary-100">
+              <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-primary-100">
                 <button
                   onClick={() => handleExportExcel(c)}
                   disabled={exportingId === `excel-${c.id}`}
@@ -159,6 +160,7 @@ export default function Classes() {
                   <FileText size={14} />
                   {exportingId === `pdf-${c.id}` ? 'Génération…' : 'Bulletins PDF'}
                 </button>
+                <ClassWhatsAppSendButton classId={c.id} className={c.name} profile={profile} />
               </div>
             </div>
           ))}
@@ -166,4 +168,4 @@ export default function Classes() {
       )}
     </div>
   )
-         }
+}
