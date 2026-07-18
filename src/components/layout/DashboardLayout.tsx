@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { LayoutDashboard, School, Users, ClipboardList, UserCircle, LogOut, ScanLine } from 'lucide-react'
+import { LayoutDashboard, School, Users, ClipboardList, UserCircle, LogOut, ScanLine, MessageCircle } from 'lucide-react'
 import { useAuth } from '@/lib/AuthContext'
 
 const navItems = [
@@ -7,6 +7,7 @@ const navItems = [
   { to: '/classes', label: 'Classes', icon: School },
   { to: '/eleves', label: 'Élèves', icon: Users },
   { to: '/evaluations', label: 'Évaluations', icon: ClipboardList },
+  { to: '/whatsapp-historique', label: 'WhatsApp', icon: MessageCircle },
 ]
 
 export default function DashboardLayout() {
