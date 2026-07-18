@@ -12,6 +12,7 @@ import Students from '@/pages/dashboard/Students'
 import StudentDetail from '@/pages/dashboard/StudentDetail'
 import Evaluations from '@/pages/dashboard/Evaluations'
 import Profile from '@/pages/dashboard/Profile'
+import WhatsAppHistory from '@/pages/dashboard/WhatsAppHistory'
 
 export default function App() {
   const { loading } = useAuth()
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="/eleves" element={<Students />} />
           <Route path="/eleves/:studentId" element={<StudentDetail />} />
           <Route path="/evaluations" element={<Evaluations />} />
+          <Route path="/whatsapp-historique" element={<WhatsAppHistory />} />
           <Route path="/profil" element={<Profile />} />
         </Route>
       </Route>
@@ -45,4 +47,4 @@ export default function App() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
-}
+  }
