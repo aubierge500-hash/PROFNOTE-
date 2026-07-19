@@ -5,16 +5,9 @@ import { Plus, Upload, Trash2, ChevronRight } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/AuthContext'
+import { insertImportedStudents, type ImportedRow } from '@/lib/studentImport'
+import PhotoImportButton from '@/components/PhotoImportButton'
 import type { SchoolClass, Student } from '@/types/database'
-
-interface ImportedRow {
-  Nom?: string
-  Prenom?: string
-  Sexe?: string
-  Classe?: string
-  WhatsApp?: string
-  Observation?: string
-}
 
 export default function Students() {
   const { user } = useAuth()
@@ -98,20 +91,7 @@ export default function Students() {
 
   async function confirmImport() {
     if (!importPreview || !selectedClass) return
-    const rows = importPreview
-      .filter((r) => r.Nom || r.Prenom)
-      .map((r) => ({
-        teacher_id: user!.id,
-        class_id: selectedClass,
-        last_name: (r.Nom ?? '').toString().trim(),
-        first_name: (r.Prenom ?? '').toString().trim(),
-        gender: (r.Sexe ?? '').toString().trim().toUpperCase().startsWith('F') ? 'F' : (r.Sexe ? 'M' : null),
-        parent_whatsapp: r.WhatsApp ? String(r.WhatsApp).trim() : null,
-        note: r.Observation ?? null
-      }))
-
-    if (rows.length === 0) return
-    await supabase.from('students').insert(rows)
+    await insertImportedStudents(importPreview, user!.id, selectedClass)
     setImportPreview(null)
     void loadStudents()
   }
@@ -136,6 +116,15 @@ export default function Students() {
           <option key={c.id} value={c.id}>{c.name}</option>
         ))}
       </select>
+
+      {selectedClass && (
+        <PhotoImportButton
+          classId={selectedClass}
+          teacherId={user!.id}
+          className={classes.find((c) => c.id === selectedClass)?.name ?? ''}
+          onImported={loadStudents}
+        />
+      )}
 
       {importPreview && (
         <div className="card space-y-3">
@@ -213,6 +202,3 @@ export default function Students() {
           ))}
         </div>
       )}
-    </div>
-  )
-  }
