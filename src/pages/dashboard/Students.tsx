@@ -202,3 +202,6 @@ export default function Students() {
           ))}
         </div>
       )}
+    </div>
+  )
+}
