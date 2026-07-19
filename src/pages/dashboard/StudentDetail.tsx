@@ -5,6 +5,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/AuthContext'
 import { exportStudentBulletinPDF } from '@/lib/exports'
+import WhatsAppSendButton from '@/components/WhatsAppSendButton'
 import type { Student, StudentRanking } from '@/types/database'
 
 interface HistoryRow {
@@ -141,6 +142,15 @@ export default function StudentDetail() {
         </button>
       </div>
 
+      <WhatsAppSendButton
+        studentId={student.id}
+        studentName={`${student.last_name} ${student.first_name}`}
+        classId={student.class_id}
+        className={className}
+        profile={profile}
+        parentWhatsapp={student.parent_whatsapp}
+      />
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="card text-center">
           <TrendingUp size={16} className="mx-auto text-primary-400 mb-1" />
@@ -205,4 +215,4 @@ export default function StudentDetail() {
       </div>
     </div>
   )
-    }
+}
