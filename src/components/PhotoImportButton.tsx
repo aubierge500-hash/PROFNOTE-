@@ -1,6 +1,7 @@
 import { useState, useRef, type ChangeEvent } from 'react'
 import { Camera, Image as ImageIcon, Loader2, Trash2, Plus } from 'lucide-react'
 import { insertImportedStudents, type ImportedRow } from '@/lib/studentImport'
+import { getOcrProvider } from '@/lib/ocr'
 
 interface Props {
   classId: string
@@ -18,7 +19,7 @@ function parseOcrText(text: string): EditableRow[] {
   const lines = text
     .split('\n')
     .map((l) => l.trim())
-    .filter((l) => l.length > 1 && /[a-zA-ZÀ-ÿ]/.test(l))
+    .filter((l) => l.length > 1 && /[a-zA-Z\u00c0-\u00ff]/.test(l))
 
   return lines.map((line) => {
     const cleaned = line.replace(/^\d+[.\-)]\s*/, '')
@@ -55,13 +56,9 @@ export default function PhotoImportButton({ classId, teacherId, className, onImp
     setRows(null)
 
     try {
-      const Tesseract = await import('tesseract.js')
-      const result = await Tesseract.recognize(file, 'fra', {
-        logger: (m) => {
-          if (m.status === 'recognizing text') setProgress(Math.round(m.progress * 100))
-        }
-      })
-      const parsed = parseOcrText(result.data.text)
+      const provider = getOcrProvider('printed')
+      const result = await provider.recognize(file, (p) => setProgress(p))
+      const parsed = parseOcrText(result.text)
       if (parsed.length === 0) {
         setError("Aucun texte reconnu sur cette photo. Réessaie avec un meilleur éclairage ou un cadrage plus net.")
       } else {
@@ -98,7 +95,7 @@ export default function PhotoImportButton({ classId, teacherId, className, onImp
       .map((r) => ({ Nom: r.last_name, Prenom: r.first_name }))
 
     if (validRows.length === 0) {
-      setError('Ajoute au moins un nom valide avant d\'importer.')
+      setError("Ajoute au moins un nom valide avant d'importer.")
       return
     }
 
@@ -108,7 +105,7 @@ export default function PhotoImportButton({ classId, teacherId, className, onImp
       setRows(null)
       onImported()
     } catch (err) {
-      console.error('[Import photo] Erreur d\'insertion :', err)
+      console.error("[Import photo] Erreur d'insertion :", err)
       setError("Erreur lors de l'enregistrement des élèves. Réessaie.")
     } finally {
       setImporting(false)
