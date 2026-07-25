@@ -1,9 +1,11 @@
 import type { DocumentType, OCRProvider } from './types'
 import { TesseractProvider } from './TesseractProvider'
+import { PaddleProvider } from './PaddleProvider'
 
 export type { DocumentType, OCRProvider, OCRResult } from './types'
 
 const tesseractProvider = new TesseractProvider()
+const paddleProvider = new PaddleProvider()
 
 /**
  * Retourne le moteur OCR adapté au type de document.
@@ -17,8 +19,7 @@ export function getOcrProvider(documentType: DocumentType): OCRProvider {
       return tesseractProvider
     case 'handwritten':
     case 'student_copy':
-      // PaddleProvider arrive à l'étape suivante — fallback temporaire sur Tesseract
-      return tesseractProvider
+      return paddleProvider
     default:
       return tesseractProvider
   }
