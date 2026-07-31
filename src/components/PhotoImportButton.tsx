@@ -1,7 +1,7 @@
 import { useState, useRef, type ChangeEvent } from 'react'
-import { Camera, Image as ImageIcon, Loader2, Trash2, Plus } from 'lucide-react'
+import { Camera, Image as ImageIcon, Loader2, Trash2, Plus, FileText, PenLine, ClipboardList } from 'lucide-react'
 import { insertImportedStudents, type ImportedRow } from '@/lib/studentImport'
-import { getOcrProvider } from '@/lib/ocr'
+import { getOcrProvider, type DocumentType } from '@/lib/ocr'
 
 interface Props {
   classId: string
@@ -36,7 +36,14 @@ function parseOcrText(text: string): EditableRow[] {
   })
 }
 
+const DOCUMENT_TYPE_OPTIONS: { type: DocumentType; label: string; icon: typeof FileText }[] = [
+  { type: 'printed', label: 'Liste imprimée', icon: FileText },
+  { type: 'handwritten', label: 'Liste manuscrite', icon: PenLine },
+  { type: 'student_copy', label: "Copie d'élève", icon: ClipboardList }
+]
+
 export default function PhotoImportButton({ classId, teacherId, className, onImported }: Props) {
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
   const [processing, setProcessing] = useState(false)
   const [progress, setProgress] = useState(0)
   const [rows, setRows] = useState<EditableRow[] | null>(null)
@@ -45,18 +52,24 @@ export default function PhotoImportButton({ classId, teacherId, className, onImp
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const galleryInputRef = useRef<HTMLInputElement>(null)
 
-  async function handleFile(e: ChangeEvent<HTMLInputElement>) {
+  function handleFileSelected(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-
     setError(null)
+    setRows(null)
+    setPendingFile(file)
+  }
+
+  async function handleDocumentTypeChosen(type: DocumentType) {
+    if (!pendingFile) return
+    const file = pendingFile
+    setPendingFile(null)
     setProcessing(true)
     setProgress(0)
-    setRows(null)
 
     try {
-      const provider = getOcrProvider('printed')
+      const provider = getOcrProvider(type)
       const result = await provider.recognize(file, (p) => setProgress(p))
       const parsed = parseOcrText(result.text)
       if (parsed.length === 0) {
@@ -135,16 +148,41 @@ export default function PhotoImportButton({ classId, teacherId, className, onImp
           accept="image/*"
           capture="environment"
           className="hidden"
-          onChange={handleFile}
+          onChange={handleFileSelected}
         />
         <input
           ref={galleryInputRef}
           type="file"
           accept="image/*"
           className="hidden"
-          onChange={handleFile}
+          onChange={handleFileSelected}
         />
       </div>
+
+      {pendingFile && (
+        <div className="card mt-3 space-y-3">
+          <p className="text-sm font-medium text-primary-700">
+            Quel type de document est-ce ?
+          </p>
+          <div className="grid grid-cols-1 gap-2">
+            {DOCUMENT_TYPE_OPTIONS.map(({ type, label, icon: Icon }) => (
+              <button
+                key={type}
+                onClick={() => handleDocumentTypeChosen(type)}
+                className="btn-secondary flex items-center gap-2 text-sm justify-start px-4 py-2.5"
+              >
+                <Icon size={18} /> {label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setPendingFile(null)}
+            className="text-xs text-primary-500"
+          >
+            Annuler
+          </button>
+        </div>
+      )}
 
       {processing && (
         <div className="card mt-3 flex items-center gap-2 text-sm text-primary-600">
@@ -194,4 +232,4 @@ export default function PhotoImportButton({ classId, teacherId, className, onImp
       )}
     </div>
   )
-}
+  }
