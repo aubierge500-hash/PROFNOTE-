@@ -36,10 +36,10 @@ function parseOcrText(text: string): EditableRow[] {
   })
 }
 
-const DOCUMENT_TYPE_OPTIONS: { type: DocumentType; label: string; icon: typeof FileText }[] = [
+const DOCUMENT_TYPE_OPTIONS: { type: DocumentType; label: string; icon: typeof FileText; disabled?: boolean }[] = [
   { type: 'printed', label: 'Liste imprimée', icon: FileText },
-  { type: 'handwritten', label: 'Liste manuscrite', icon: PenLine },
-  { type: 'student_copy', label: "Copie d'élève", icon: ClipboardList }
+  { type: 'handwritten', label: 'Liste manuscrite (bientôt disponible)', icon: PenLine, disabled: true },
+  { type: 'student_copy', label: "Copie d'élève (bientôt disponible)", icon: ClipboardList, disabled: true }
 ]
 
 export default function PhotoImportButton({ classId, teacherId, className, onImported }: Props) {
@@ -79,7 +79,8 @@ export default function PhotoImportButton({ classId, teacherId, className, onImp
       }
     } catch (err) {
       console.error('[OCR] Erreur de reconnaissance :', err)
-      setError("Erreur lors de l'analyse de la photo. Réessaie.")
+      const message = err instanceof Error ? err.message : String(err)
+      setError(`Erreur lors de l'analyse : ${message}`)
     } finally {
       setProcessing(false)
     }
@@ -165,11 +166,12 @@ export default function PhotoImportButton({ classId, teacherId, className, onImp
             Quel type de document est-ce ?
           </p>
           <div className="grid grid-cols-1 gap-2">
-            {DOCUMENT_TYPE_OPTIONS.map(({ type, label, icon: Icon }) => (
+            {DOCUMENT_TYPE_OPTIONS.map(({ type, label, icon: Icon, disabled }) => (
               <button
                 key={type}
                 onClick={() => handleDocumentTypeChosen(type)}
-                className="btn-secondary flex items-center gap-2 text-sm justify-start px-4 py-2.5"
+                disabled={disabled}
+                className="btn-secondary flex items-center gap-2 text-sm justify-start px-4 py-2.5 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Icon size={18} /> {label}
               </button>
@@ -232,4 +234,4 @@ export default function PhotoImportButton({ classId, teacherId, className, onImp
       )}
     </div>
   )
-  }
+}
