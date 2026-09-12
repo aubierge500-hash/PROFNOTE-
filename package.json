@@ -25,7 +25,9 @@
     "recharts": "^2.12.7",
     "date-fns": "^3.6.0",
     "tesseract.js": "^5.1.1",
-    "@paddlejs-models/ocr": "^1.2.4"
+    "@paddlejs-models/ocr": "^1.2.4",
+    "mammoth": "^1.8.0",
+    "pdfjs-dist": "^4.7.76"
   },
   "devDependencies": {
     "@types/react": "^18.3.9",
