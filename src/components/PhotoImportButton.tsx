@@ -1,6 +1,7 @@
 import { useState, useRef, type ChangeEvent } from 'react'
-import { Camera, Image as ImageIcon, Loader2, Trash2, Plus } from 'lucide-react'
+import { Camera, Image as ImageIcon, Loader2, Trash2, Plus, FileText, PenLine, ClipboardList } from 'lucide-react'
 import { insertImportedStudents, type ImportedRow } from '@/lib/studentImport'
+import { getOcrProvider, type DocumentType } from '@/lib/ocr'
 
 interface Props {
   classId: string
@@ -18,7 +19,7 @@ function parseOcrText(text: string): EditableRow[] {
   const lines = text
     .split('\n')
     .map((l) => l.trim())
-    .filter((l) => l.length > 1 && /[a-zA-ZÀ-ÿ]/.test(l))
+    .filter((l) => l.length > 1 && /[a-zA-Z\u00c0-\u00ff]/.test(l))
 
   return lines.map((line) => {
     const cleaned = line.replace(/^\d+[.\-)]\s*/, '')
@@ -35,7 +36,14 @@ function parseOcrText(text: string): EditableRow[] {
   })
 }
 
+const DOCUMENT_TYPE_OPTIONS: { type: DocumentType; label: string; icon: typeof FileText; disabled?: boolean }[] = [
+  { type: 'printed', label: 'Liste imprimée', icon: FileText },
+  { type: 'handwritten', label: 'Liste manuscrite (bientôt disponible)', icon: PenLine, disabled: true },
+  { type: 'student_copy', label: "Copie d'élève (bientôt disponible)", icon: ClipboardList, disabled: true }
+]
+
 export default function PhotoImportButton({ classId, teacherId, className, onImported }: Props) {
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
   const [processing, setProcessing] = useState(false)
   const [progress, setProgress] = useState(0)
   const [rows, setRows] = useState<EditableRow[] | null>(null)
@@ -44,24 +52,26 @@ export default function PhotoImportButton({ classId, teacherId, className, onImp
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const galleryInputRef = useRef<HTMLInputElement>(null)
 
-  async function handleFile(e: ChangeEvent<HTMLInputElement>) {
+  function handleFileSelected(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-
     setError(null)
+    setRows(null)
+    setPendingFile(file)
+  }
+
+  async function handleDocumentTypeChosen(type: DocumentType) {
+    if (!pendingFile) return
+    const file = pendingFile
+    setPendingFile(null)
     setProcessing(true)
     setProgress(0)
-    setRows(null)
 
     try {
-      const Tesseract = await import('tesseract.js')
-      const result = await Tesseract.recognize(file, 'fra', {
-        logger: (m) => {
-          if (m.status === 'recognizing text') setProgress(Math.round(m.progress * 100))
-        }
-      })
-      const parsed = parseOcrText(result.data.text)
+      const provider = getOcrProvider(type)
+      const result = await provider.recognize(file, (p) => setProgress(p))
+      const parsed = parseOcrText(result.text)
       if (parsed.length === 0) {
         setError("Aucun texte reconnu sur cette photo. Réessaie avec un meilleur éclairage ou un cadrage plus net.")
       } else {
@@ -69,7 +79,8 @@ export default function PhotoImportButton({ classId, teacherId, className, onImp
       }
     } catch (err) {
       console.error('[OCR] Erreur de reconnaissance :', err)
-      setError("Erreur lors de l'analyse de la photo. Réessaie.")
+      const message = err instanceof Error ? err.message : String(err)
+      setError(`Erreur lors de l'analyse : ${message}`)
     } finally {
       setProcessing(false)
     }
@@ -98,7 +109,7 @@ export default function PhotoImportButton({ classId, teacherId, className, onImp
       .map((r) => ({ Nom: r.last_name, Prenom: r.first_name }))
 
     if (validRows.length === 0) {
-      setError('Ajoute au moins un nom valide avant d\'importer.')
+      setError("Ajoute au moins un nom valide avant d'importer.")
       return
     }
 
@@ -108,7 +119,7 @@ export default function PhotoImportButton({ classId, teacherId, className, onImp
       setRows(null)
       onImported()
     } catch (err) {
-      console.error('[Import photo] Erreur d\'insertion :', err)
+      console.error("[Import photo] Erreur d'insertion :", err)
       setError("Erreur lors de l'enregistrement des élèves. Réessaie.")
     } finally {
       setImporting(false)
@@ -138,16 +149,42 @@ export default function PhotoImportButton({ classId, teacherId, className, onImp
           accept="image/*"
           capture="environment"
           className="hidden"
-          onChange={handleFile}
+          onChange={handleFileSelected}
         />
         <input
           ref={galleryInputRef}
           type="file"
           accept="image/*"
           className="hidden"
-          onChange={handleFile}
+          onChange={handleFileSelected}
         />
       </div>
+
+      {pendingFile && (
+        <div className="card mt-3 space-y-3">
+          <p className="text-sm font-medium text-primary-700">
+            Quel type de document est-ce ?
+          </p>
+          <div className="grid grid-cols-1 gap-2">
+            {DOCUMENT_TYPE_OPTIONS.map(({ type, label, icon: Icon, disabled }) => (
+              <button
+                key={type}
+                onClick={() => handleDocumentTypeChosen(type)}
+                disabled={disabled}
+                className="btn-secondary flex items-center gap-2 text-sm justify-start px-4 py-2.5 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Icon size={18} /> {label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setPendingFile(null)}
+            className="text-xs text-primary-500"
+          >
+            Annuler
+          </button>
+        </div>
+      )}
 
       {processing && (
         <div className="card mt-3 flex items-center gap-2 text-sm text-primary-600">
