@@ -1,100 +1,136 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { LayoutDashboard, School, Users, ClipboardList, UserCircle, LogOut, ScanLine, MessageCircle } from 'lucide-react'
+import {
+  LayoutDashboard,
+  School,
+  Users,
+  ClipboardList,
+  UserCircle,
+  LogOut,
+  ScanLine,
+  MessageCircle,
+} from 'lucide-react'
 import { useAuth } from '@/lib/AuthContext'
 
 const navItems = [
-  { to: '/', label: 'Tableau de bord', icon: LayoutDashboard, end: true },
-  { to: '/classes', label: 'Classes', icon: School },
-  { to: '/eleves', label: 'Élèves', icon: Users },
-  { to: '/evaluations', label: 'Évaluations', icon: ClipboardList },
-  { to: '/whatsapp-historique', label: 'WhatsApp', icon: MessageCircle },
+  {
+    to: '/',
+    label: 'Tableau de bord',
+    icon: LayoutDashboard,
+    end: true,
+  },
+  {
+    to: '/classes',
+    label: 'Classes',
+    icon: School,
+  },
+  {
+    to: '/eleves',
+    label: 'Élèves',
+    icon: Users,
+  },
+  {
+    to: '/evaluations',
+    label: 'Évaluations',
+    icon: ClipboardList,
+  },
+  {
+    to: '/whatsapp-historique',
+    label: 'WhatsApp',
+    icon: MessageCircle,
+  },
 ]
 
 export default function DashboardLayout() {
-  const { profile, signOut } = useAuth()
+  const { signOut, user } = useAuth()
 
   return (
-    <div className="min-h-screen bg-primary-50 flex flex-col md:flex-row">
-      <aside className="hidden md:flex md:w-64 md:flex-col bg-primary-800 text-white">
-        <div className="px-5 py-5 flex items-center gap-2">
-          <span className="w-8 h-8 rounded-lg bg-accent text-primary-900 flex items-center justify-center font-display font-bold text-sm">
-            P
-          </span>
-          <span className="font-display font-bold text-lg">PROFNOTE</span>
+    <div className="min-h-screen bg-primary-50 flex">
+      {/* Sidebar */}
+      <aside className="w-64 bg-primary-800 text-white flex flex-col">
+        {/* Logo */}
+        <div className="p-5 border-b border-primary-700">
+          <h1 className="text-xl font-display font-bold">PROFNOTE</h1>
+          <p className="text-xs text-primary-300 mt-1">
+            Gestion des notes
+          </p>
         </div>
 
-        <nav className="flex-1 px-3 space-y-1">
-          {navItems.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  isActive ? 'bg-primary-600 text-white' : 'text-primary-200 hover:bg-primary-700'
-                }`
-              }
-            >
-              <Icon size={18} />
-              {label}
-            </NavLink>
-          ))}
+        {/* Navigation */}
+        <nav className="flex-1 p-3 space-y-1">
+          {navItems.map((item) => {
+            const Icon = item.icon
 
-          <button
-            disabled
-            title="Bientôt disponible"
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-primary-400 cursor-not-allowed"
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-primary-600 text-white'
+                      : 'text-primary-200 hover:bg-primary-700'
+                  }`
+                }
+              >
+                <Icon size={18} />
+                {item.label}
+              </NavLink>
+            )
+          })}
+
+          {/* Scanner */}
+          <NavLink
+            to="/scanner"
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-primary-600 text-white'
+                  : 'text-primary-200 hover:bg-primary-700'
+              }`
+            }
           >
             <ScanLine size={18} />
             Scanner
-          </button>
+          </NavLink>
         </nav>
 
-        <div className="px-3 pb-4 space-y-1 border-t border-primary-700 pt-3">
+        {/* Profil + déconnexion */}
+        <div className="p-3 border-t border-primary-700">
           <NavLink
             to="/profil"
             className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${
-                isActive ? 'bg-primary-600' : 'text-primary-200 hover:bg-primary-700'
+              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-primary-600 text-white'
+                  : 'text-primary-200 hover:bg-primary-700'
               }`
             }
           >
             <UserCircle size={18} />
-            {profile?.full_name ?? 'Mon profil'}
+            Profil
           </NavLink>
+
           <button
-            onClick={() => signOut()}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-primary-200 hover:bg-primary-700"
+            onClick={signOut}
+            className="w-full flex items-center gap-3 px-3 py-2.5 mt-1 rounded-lg text-sm font-medium text-primary-200 hover:bg-primary-700 transition-colors"
           >
             <LogOut size={18} />
             Déconnexion
           </button>
+
+          {user?.email && (
+            <p className="text-xs text-primary-400 mt-3 px-3 truncate">
+              {user.email}
+            </p>
+          )}
         </div>
       </aside>
 
-      <main className="flex-1 pb-20 md:pb-0">
-        <div className="max-w-5xl mx-auto px-4 py-6">
-          <Outlet />
-        </div>
+      {/* Contenu principal */}
+      <main className="flex-1 min-w-0">
+        <Outlet />
       </main>
-
-      <nav className="md:hidden fixed bottom-0 inset-x-0 bg-white border-t border-primary-100 flex justify-around py-2 z-10">
-        {navItems.map(({ to, label, icon: Icon, end }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            className={({ isActive }) =>
-              `flex flex-col items-center gap-0.5 px-2 py-1 text-xs ${
-                isActive ? 'text-primary-600' : 'text-primary-400'
-              }`
-            }
-          >
-            <Icon size={20} />
-            {label.split(' ')[0]}
-          </NavLink>
-        ))}
-      </nav>
     </div>
   )
-   }
+}
