@@ -41,7 +41,7 @@ function imageToCanvas(
   const ctx = canvas.getContext('2d')
 
   if (!ctx) {
-    throw new Error('Impossible de créer le contexte Canvas')
+    throw new Error(`Impossible de créer le contexte Canvas`)
   }
 
   ctx.drawImage(
@@ -75,7 +75,7 @@ function createRedMask(source: HTMLCanvasElement): HTMLCanvasElement {
   const targetCtx = canvas.getContext('2d')
 
   if (!sourceCtx || !targetCtx) {
-    throw new Error('Impossible de traiter l'image')
+    throw new Error(`Impossible de traiter l'image`)
   }
 
   const imageData = sourceCtx.getImageData(
