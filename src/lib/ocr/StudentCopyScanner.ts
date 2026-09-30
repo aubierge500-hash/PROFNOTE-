@@ -1,4 +1,6 @@
 import type { OCRProvider, OCRResult, DocumentType } from './types'
+import { createWorker } from 'tesseract.js'
+
 import {
   blankCanvas,
   cropRect,
@@ -10,7 +12,9 @@ import {
   toDataUrl,
   withMargin
 } from './scanCanvas'
+
 import type { Rect, Rotation } from './scanCanvas'
+
 import {
   buildRingImage,
   createNameImage,
@@ -20,6 +24,7 @@ import {
   overlapsRing,
   redInkImage
 } from './scanRed'
+
 import {
   DIGITS,
   NAME_CHARS,
@@ -37,6 +42,7 @@ import {
   rankStudentMatches,
   readImage
 } from './scanRead'
+
 import type {
   GradeKind,
   OcrWord,
@@ -54,8 +60,10 @@ export type CandidateSource = 'ring' | 'field' | 'other'
 export interface ScanOptions {
   /** Si absent : le sens de la photo est détecté automatiquement. */
   rotation?: Rotation
+
   /** Élèves de la classe ("NOM Prénom") : indispensable pour fiabiliser le nom. */
   students?: string[]
+
   /** Barème supposé quand seule la note est écrite (défaut : 20). */
   defaultMax?: number
 }
@@ -81,20 +89,28 @@ export interface ScanDebug {
 export interface StudentCopyScanResult {
   /** Nom fiable (élève reconnu dans la liste), sinon chaîne vide. */
   name: string
+
   /** Texte brut lu : à ne jamais afficher comme un nom. */
   rawName: string
+
   matchedStudent: string | null
   nameSuggestions: StudentMatch[]
+
   grade: string
   gradeKind: GradeKind
+
   /** Toutes les notes trouvées, la meilleure en premier. */
   candidates: GradeCandidate[]
+
   /** Sous-notes de compétences (C1, C2, CP...). */
   subScores: SubScore[]
+
   needsReview: boolean
   warnings: string[]
+
   nameConfidence: number
   gradeConfidence: number
+
   rotation: Rotation
   debug: ScanDebug
 }
@@ -133,11 +149,17 @@ interface NameReading {
 function scoreCandidate(c: GradeCandidate): number {
   let score = 0
 
-  if (c.kind === 'fraction') score += 6
-  else if (c.kind === 'number') score += 2
+  if (c.kind === 'fraction') {
+    score += 6
+  } else if (c.kind === 'number') {
+    score += 2
+  }
 
-  if (c.source === 'ring') score += 3
-  else if (c.source === 'field') score += 2
+  if (c.source === 'ring') {
+    score += 3
+  } else if (c.source === 'field') {
+    score += 2
+  }
 
   return score + c.confidence / 100
 }
@@ -151,6 +173,7 @@ async function readName(
   analysis: PageAnalysis
 ): Promise<NameReading> {
   const { page, labels } = analysis
+
   const targets = [labels.nom, labels.prenom].filter(
     (label): label is OcrWord => label !== null
   )
@@ -165,9 +188,26 @@ async function readName(
     // Formulaire imprimé : on lit à droite de "Nom :" puis de "Prénom :"
     for (const label of targets) {
       const rect = handwritingRect(label, page.width)
-      const crop = cropRect(page, rect.x, rect.y, rect.w, rect.h)
-      const img = withMargin(normalizeHeight(createNameImage(crop), 150))
-      const out = await readImage(worker, img, '7', NAME_CHARS)
+
+      const crop = cropRect(
+        page,
+        rect.x,
+        rect.y,
+        rect.w,
+        rect.h
+      )
+
+      const img = withMargin(
+        normalizeHeight(createNameImage(crop), 150)
+      )
+
+      const out = await readImage(
+        worker,
+        img,
+        '7',
+        NAME_CHARS
+      )
+
       const text = keepNameTokens(out.text)
 
       rawText += `${out.text}\n`
@@ -178,7 +218,9 @@ async function readName(
         confCount++
       }
 
-      if (image === null) image = img
+      if (image === null) {
+        image = img
+      }
     }
   } else {
     // Cahier : nom en haut à gauche, sur plusieurs lignes
@@ -189,8 +231,18 @@ async function readName(
       page.width * 0.4,
       page.height * 0.22
     )
-    const img = withMargin(normalizeHeight(createNameImage(crop), 400))
-    const out = await readImage(worker, img, '6', NAME_CHARS)
+
+    const img = withMargin(
+      normalizeHeight(createNameImage(crop), 400)
+    )
+
+    const out = await readImage(
+      worker,
+      img,
+      '6',
+      NAME_CHARS
+    )
+
     const text = extractNameLines(out.text)
 
     rawText = out.text
@@ -205,7 +257,10 @@ async function readName(
 
   return {
     raw: parts.join(' '),
-    confidence: confCount > 0 ? confSum / confCount : 0,
+    confidence:
+      confCount > 0
+        ? confSum / confCount
+        : 0,
     image: image ?? blankCanvas(),
     rawText
   }
@@ -222,7 +277,13 @@ async function analyzePage(
   defaultMax: number
 ): Promise<PageAnalysis> {
   // La note est dans le haut de la page (40 %)
-  const band = cropRect(page, 0, 0, page.width, page.height * 0.4)
+  const band = cropRect(
+    page,
+    0,
+    0,
+    page.width,
+    page.height * 0.4
+  )
 
   // 1. Libellés imprimés : Nom / Prénom / Note
   const printedOut = await readImage(
@@ -231,15 +292,33 @@ async function analyzePage(
     '11',
     ''
   )
+
   const labels: Labels = {
-    nom: findLabel(printedOut.words, 'nom', page.width),
-    prenom: findLabel(printedOut.words, 'prenom', page.width),
-    note: findLabel(printedOut.words, 'note', page.width)
+    nom: findLabel(
+      printedOut.words,
+      'nom',
+      page.width
+    ),
+    prenom: findLabel(
+      printedOut.words,
+      'prenom',
+      page.width
+    ),
+    note: findLabel(
+      printedOut.words,
+      'note',
+      page.width
+    )
   }
-  const noteZone = labels.note ? noteRect(labels.note, page.width) : null
+
+  const noteZone = labels.note
+    ? noteRect(labels.note, page.width)
+    : null
 
   const inNote = (b: Rect): boolean => {
-    if (noteZone === null) return false
+    if (noteZone === null) {
+      return false
+    }
 
     const cx = b.x + b.w / 2
     const cy = b.y + b.h / 2
@@ -253,13 +332,22 @@ async function analyzePage(
   }
 
   // 2. Note entourée
-  const blobs = findRedBlobs(band).sort((a, b) => b.w * b.h - a.w * a.h)
+  const blobs = findRedBlobs(band).sort(
+    (a, b) => b.w * b.h - a.w * a.h
+  )
+
   let ring: Rect | null = null
 
   for (const blob of blobs.slice(0, 3)) {
-    ring = findRingInterior(band, blob, page.width)
+    ring = findRingInterior(
+      band,
+      blob,
+      page.width
+    )
 
-    if (ring !== null) break
+    if (ring !== null) {
+      break
+    }
   }
 
   const ringBox: Rect | null = ring
@@ -268,11 +356,25 @@ async function analyzePage(
 
   if (ringBox !== null) {
     const ringImage = withMargin(
-      normalizeHeight(buildRingImage(band, ringBox), 220)
+      normalizeHeight(
+        buildRingImage(band, ringBox),
+        220
+      )
     )
-    const out = await readImage(worker, ringImage, '6', DIGITS)
+
+    const out = await readImage(
+      worker,
+      ringImage,
+      '6',
+      DIGITS
+    )
+
     const parsed =
-      parseFromWords(out.words) ?? parseGradeText(out.text, defaultMax)
+      parseFromWords(out.words) ??
+      parseGradeText(
+        out.text,
+        defaultMax
+      )
 
     if (parsed.kind !== 'none') {
       entries.push({
@@ -288,12 +390,19 @@ async function analyzePage(
     }
   }
 
-  // 3. Autres taches rouges : champ "Note", sous-notes, note non entourée
+  // 3. Autres taches rouges :
+  // champ "Note", sous-notes, note non entourée
   const others = blobs
-    .filter((b) => ringBox === null || !overlapsRing(b, ringBox))
+    .filter(
+      (b) =>
+        ringBox === null ||
+        !overlapsRing(b, ringBox)
+    )
     .sort(
       (a, b) =>
-        Number(inNote(b)) - Number(inNote(a)) || b.w * b.h - a.w * a.h
+        Number(inNote(b)) -
+          Number(inNote(a)) ||
+        b.w * b.h - a.w * a.h
     )
 
   for (const blob of others.slice(0, 6)) {
@@ -304,8 +413,21 @@ async function analyzePage(
       blob.w + 12,
       blob.h + 12
     )
-    const img = withMargin(normalizeHeight(redInkImage(crop), 160))
-    const out = await readImage(worker, img, '6', SCORE_CHARS)
+
+    const img = withMargin(
+      normalizeHeight(
+        redInkImage(crop),
+        160
+      )
+    )
+
+    const out = await readImage(
+      worker,
+      img,
+      '6',
+      SCORE_CHARS
+    )
+
     const sub = parseSubScore(out.text)
 
     if (sub !== null) {
@@ -314,13 +436,26 @@ async function analyzePage(
     }
 
     const parsed =
-      parseFromWords(out.words) ?? parseGradeText(out.text, defaultMax)
+      parseFromWords(out.words) ??
+      parseGradeText(
+        out.text,
+        defaultMax
+      )
 
-    if (parsed.kind === 'none') continue
+    if (parsed.kind === 'none') {
+      continue
+    }
 
-    const source: CandidateSource = inNote(blob) ? 'field' : 'other'
+    const source: CandidateSource =
+      inNote(blob)
+        ? 'field'
+        : 'other'
 
-    if (parsed.kind === 'number' && source === 'other' && out.confidence < 45) {
+    if (
+      parsed.kind === 'number' &&
+      source === 'other' &&
+      out.confidence < 45
+    ) {
       continue
     }
 
@@ -337,24 +472,41 @@ async function analyzePage(
   }
 
   entries.sort(
-    (a, b) => scoreCandidate(b.candidate) - scoreCandidate(a.candidate)
+    (a, b) =>
+      scoreCandidate(b.candidate) -
+      scoreCandidate(a.candidate)
   )
 
-  const labelCount = [labels.nom, labels.prenom, labels.note].filter(
+  const labelCount = [
+    labels.nom,
+    labels.prenom,
+    labels.note
+  ].filter(
     (label) => label !== null
   ).length
-  const best: Entry | undefined = entries[0]
+
+  const best: Entry | undefined =
+    entries[0]
 
   return {
     rotation,
     page,
     labels,
-    candidates: entries.map((entry) => entry.candidate),
+    candidates: entries.map(
+      (entry) => entry.candidate
+    ),
     subScores,
-    gradeImage: best ? best.image : null,
-    rawGradeText: best ? best.text : '',
-    ringFound: ringBox !== null,
-    score: (best ? scoreCandidate(best.candidate) : 0) + labelCount * 1.5
+    gradeImage:
+      best ? best.image : null,
+    rawGradeText:
+      best ? best.text : '',
+    ringFound:
+      ringBox !== null,
+    score:
+      (best
+        ? scoreCandidate(best.candidate)
+        : 0) +
+      labelCount * 1.5
   }
 }
 
@@ -362,17 +514,27 @@ async function analyzePage(
 /* Scanner                                                             */
 /* ------------------------------------------------------------------ */
 
-export class StudentCopyScanner implements OCRProvider {
-  readonly name = 'Scanner intelligent de copies'
+export class StudentCopyScanner
+  implements OCRProvider
+{
+  readonly name =
+    'Scanner intelligent de copies'
 
-  readonly supportedTypes: DocumentType[] = ['student_copy']
+  readonly supportedTypes: DocumentType[] = [
+    'student_copy'
+  ]
 
   /** Méthode compatible avec OCRProvider. */
   async recognize(
     file: File | Blob,
-    onProgress?: (progress: number) => void
+    onProgress?: (
+      progress: number
+    ) => void
   ): Promise<OCRResult> {
-    const result = await this.scan(file, onProgress)
+    const result = await this.scan(
+      file,
+      onProgress
+    )
 
     return {
       text: [
@@ -381,13 +543,17 @@ export class StudentCopyScanner implements OCRProvider {
       ].join('\n'),
 
       confidence:
-        (result.nameConfidence + result.gradeConfidence) / 2
+        (result.nameConfidence +
+          result.gradeConfidence) /
+        2
     }
   }
 
   async scan(
     file: File | Blob,
-    onProgress?: (progress: number) => void,
+    onProgress?: (
+      progress: number
+    ) => void,
     options: ScanOptions = {}
   ): Promise<StudentCopyScanResult> {
     onProgress?.(5)
@@ -395,8 +561,10 @@ export class StudentCopyScanner implements OCRProvider {
     const img = await loadImage(file)
     const base = rotateImage(img, 0)
     const quality = measureQuality(base)
+
     const warnings: string[] = []
-    const defaultMax = options.defaultMax ?? 20
+    const defaultMax =
+      options.defaultMax ?? 20
 
     if (quality.brightness < 70) {
       warnings.push(
@@ -412,11 +580,15 @@ export class StudentCopyScanner implements OCRProvider {
 
     onProgress?.(10)
 
-    const mod = await import('tesseract.js')
-    const lib = (mod as { default?: typeof mod }).default ?? mod
-    const worker = (await lib.createWorker(
-      'fra'
-    )) as unknown as TesseractWorkerLike
+    /*
+     * Tesseract est importé directement.
+     * Cela évite le cast incorrect du module dynamique
+     * qui provoquait l'erreur TS2352 au build Vercel.
+     */
+    const worker =
+      (await createWorker(
+        'fra'
+      )) as unknown as TesseractWorkerLike
 
     try {
       onProgress?.(20)
@@ -426,102 +598,221 @@ export class StudentCopyScanner implements OCRProvider {
           ? [options.rotation]
           : guessOrientations(base)
 
-      let best: PageAnalysis | null = null
+      let best: PageAnalysis | null =
+        null
 
-      for (let i = 0; i < orientations.length; i++) {
-        const rotation = orientations[i]
-        const page = rotation === 0 ? base : rotateImage(img, rotation)
-        const analysis = await analyzePage(worker, page, rotation, defaultMax)
+      for (
+        let i = 0;
+        i < orientations.length;
+        i++
+      ) {
+        const rotation =
+          orientations[i]
 
-        if (best === null || analysis.score > best.score) {
+        const page =
+          rotation === 0
+            ? base
+            : rotateImage(
+                img,
+                rotation
+              )
+
+        const analysis =
+          await analyzePage(
+            worker,
+            page,
+            rotation,
+            defaultMax
+          )
+
+        if (
+          best === null ||
+          analysis.score > best.score
+        ) {
           best = analysis
         }
 
-        onProgress?.(20 + Math.round(((i + 1) / orientations.length) * 50))
+        onProgress?.(
+          20 +
+            Math.round(
+              ((i + 1) /
+                orientations.length) *
+                50
+            )
+        )
 
-        const top: GradeCandidate | undefined = analysis.candidates[0]
+        const top:
+          | GradeCandidate
+          | undefined =
+          analysis.candidates[0]
 
-        if (top !== undefined && top.kind === 'fraction') break
+        if (
+          top !== undefined &&
+          top.kind === 'fraction'
+        ) {
+          break
+        }
       }
 
       if (best === null) {
-        throw new Error(`Aucune orientation n'a pu être analysée`)
+        throw new Error(
+          `Aucune orientation n'a pu être analysée`
+        )
       }
 
       onProgress?.(75)
 
-      const nameRead = await readName(worker, best)
+      const nameRead =
+        await readName(
+          worker,
+          best
+        )
 
       onProgress?.(95)
 
-      const students = options.students ?? []
-      const hasList = students.length > 0
-      const suggestions = hasList
-        ? rankStudentMatches(nameRead.raw, students, 3)
-        : []
-      const matched = hasList ? bestStudentMatch(nameRead.raw, students) : null
+      const students =
+        options.students ?? []
+
+      const hasList =
+        students.length > 0
+
+      const suggestions =
+        hasList
+          ? rankStudentMatches(
+              nameRead.raw,
+              students,
+              3
+            )
+          : []
+
+      const matched =
+        hasList
+          ? bestStudentMatch(
+              nameRead.raw,
+              students
+            )
+          : null
 
       let name = ''
 
       if (matched !== null) {
         name = matched.name
-      } else if (!hasList && isReliableName(nameRead.raw, nameRead.confidence)) {
+      } else if (
+        !hasList &&
+        isReliableName(
+          nameRead.raw,
+          nameRead.confidence
+        )
+      ) {
         name = nameRead.raw
       }
 
-      const chosen: GradeCandidate | undefined = best.candidates[0]
-      const grade = chosen ? chosen.value : ''
-      const gradeKind: GradeKind = chosen ? chosen.kind : 'none'
-      const gradeConfidence = chosen ? chosen.confidence : 0
+      const chosen:
+        | GradeCandidate
+        | undefined =
+        best.candidates[0]
+
+      const grade =
+        chosen
+          ? chosen.value
+          : ''
+
+      const gradeKind: GradeKind =
+        chosen
+          ? chosen.kind
+          : 'none'
+
+      const gradeConfidence =
+        chosen
+          ? chosen.confidence
+          : 0
 
       if (!chosen) {
         warnings.push(
           `Aucune note trouvée : vérifiez qu'elle est écrite au stylo rouge en haut de la copie.`
         )
-      } else if (gradeKind === 'number') {
-        warnings.push(`Barème non lu sur la copie : /${defaultMax} supposé.`)
+      } else if (
+        gradeKind === 'number'
+      ) {
+        warnings.push(
+          `Barème non lu sur la copie : /${defaultMax} supposé.`
+        )
       }
 
-      if (hasList && matched === null) {
+      if (
+        hasList &&
+        matched === null
+      ) {
         warnings.push(
           `Nom non reconnu avec certitude : choisissez l'élève dans la liste.`
         )
       }
 
-      const labelsFound: string[] = []
+      const labelsFound: string[] =
+        []
 
-      if (best.labels.nom) labelsFound.push('Nom')
-      if (best.labels.prenom) labelsFound.push('Prénom')
-      if (best.labels.note) labelsFound.push('Note')
+      if (best.labels.nom) {
+        labelsFound.push('Nom')
+      }
+
+      if (best.labels.prenom) {
+        labelsFound.push('Prénom')
+      }
+
+      if (best.labels.note) {
+        labelsFound.push('Note')
+      }
 
       onProgress?.(100)
 
       return {
         name,
-        rawName: nameRead.raw,
-        matchedStudent: matched !== null ? matched.name : null,
-        nameSuggestions: suggestions,
+        rawName:
+          nameRead.raw,
+        matchedStudent:
+          matched !== null
+            ? matched.name
+            : null,
+        nameSuggestions:
+          suggestions,
         grade,
         gradeKind,
-        candidates: best.candidates,
-        subScores: best.subScores,
+        candidates:
+          best.candidates,
+        subScores:
+          best.subScores,
         needsReview:
           gradeKind !== 'fraction' ||
           gradeConfidence < 55 ||
           warnings.length > 0,
         warnings,
-        nameConfidence: nameRead.confidence,
+        nameConfidence:
+          nameRead.confidence,
         gradeConfidence,
-        rotation: best.rotation,
+        rotation:
+          best.rotation,
         debug: {
-          rotation: best.rotation,
-          gradeImage: toDataUrl(best.gradeImage),
-          nameImage: toDataUrl(nameRead.image),
-          rawGradeText: best.rawGradeText,
-          rawNameText: nameRead.rawText,
+          rotation:
+            best.rotation,
+          gradeImage:
+            toDataUrl(
+              best.gradeImage
+            ),
+          nameImage:
+            toDataUrl(
+              nameRead.image
+            ),
+          rawGradeText:
+            best.rawGradeText,
+          rawNameText:
+            nameRead.rawText,
           labelsFound,
-          ringFound: best.ringFound,
-          brightness: Math.round(quality.brightness)
+          ringFound:
+            best.ringFound,
+          brightness:
+            Math.round(
+              quality.brightness
+            )
         }
       }
     } finally {
@@ -530,6 +821,7 @@ export class StudentCopyScanner implements OCRProvider {
   }
 }
 
-export const studentCopyScanner = new StudentCopyScanner()
+export const studentCopyScanner =
+  new StudentCopyScanner()
 
 // FIN StudentCopyScanner.ts
