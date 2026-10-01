@@ -2,6 +2,11 @@ import * as XLSX from 'xlsx'
 import Papa from 'papaparse'
 import mammoth from 'mammoth'
 import * as pdfjsLib from 'pdfjs-dist'
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+
+import type { TextItem } from 'pdfjs-dist/types/src/display/api'
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker
 
 export interface ImportedRow {
   Nom?: string
@@ -89,7 +94,10 @@ function normalizeHeader(value: unknown): string {
 }
 
 function normalizeValue(value: unknown): string {
-  if (value === null || value === undefined) return ''
+  if (value === null || value === undefined) {
+    return ''
+  }
+
   return String(value).trim()
 }
 
@@ -486,27 +494,26 @@ async function parsePDF(
 
     const items = content.items
       .filter(
-        (item): item is any =>
-          'str' in item
+        (item): item is TextItem =>
+          'str' in item &&
+          typeof item.str === 'string'
       )
-      .map((item: any) => ({
-        text: String(
-          item.str ?? ''
-        ),
-
-        x: Number(
-          item.transform?.[4] ?? 0
-        ),
-
-        y: Number(
-          item.transform?.[5] ?? 0
-        )
+      .map((item) => ({
+        text: String(item.str ?? ''),
+        x: Number(item.transform?.[4] ?? 0),
+        y: Number(item.transform?.[5] ?? 0),
+        width: Number(item.width ?? 0)
       }))
+      .filter((item) => item.text.trim())
 
     const grouped =
       new Map<
         number,
-        { x: number; text: string }[]
+        {
+          x: number
+          text: string
+          width: number
+        }[]
       >()
 
     for (const item of items) {
@@ -521,27 +528,77 @@ async function parsePDF(
         .get(y)!
         .push({
           x: item.x,
-          text: item.text
+          text: item.text,
+          width: item.width
         })
     }
 
-    lines.push(
-      ...Array.from(
+    const pageLines =
+      Array.from(
         grouped.entries()
       )
         .sort(
           (a, b) => b[0] - a[0]
         )
-        .map(([, values]) =>
-          values
-            .sort(
+        .map(([, values]) => {
+          const sorted =
+            values.sort(
               (a, b) => a.x - b.x
             )
-            .map((v) => v.text)
-            .join(' ')
-            .trim()
-        )
+
+          const cells: string[] = []
+
+          let current = ''
+
+          let previousRight: number | null =
+            null
+
+          for (const value of sorted) {
+            const gap =
+              previousRight === null
+                ? 0
+                : value.x - previousRight
+
+            /*
+             * Un grand espace horizontal correspond
+             * généralement à une nouvelle colonne
+             * dans les PDF provenant de Word/Excel.
+             */
+            if (
+              current &&
+              gap > 18
+            ) {
+              cells.push(
+                current.trim()
+              )
+
+              current = ''
+            }
+
+            current = current
+              ? `${current} ${value.text}`
+              : value.text
+
+            previousRight =
+              value.x +
+              Math.max(
+                value.width,
+                value.text.length * 4
+              )
+          }
+
+          if (current.trim()) {
+            cells.push(
+              current.trim()
+            )
+          }
+
+          return cells.join('\t')
+        })
         .filter(Boolean)
+
+    lines.push(
+      ...pageLines
     )
   }
 
@@ -581,7 +638,9 @@ function parseTextLines(
         .replace(/\s+/g, ' ')
         .trim()
 
-    if (!line) continue
+    if (!line) {
+      continue
+    }
 
     const normalized =
       normalizeHeader(line)
@@ -595,7 +654,9 @@ function parseTextLines(
 
     if (
       normalized === 'listeeleves' ||
-      normalized === 'listedeclasse'
+      normalized === 'listedeclasse' ||
+      normalized === 'eleves' ||
+      normalized === 'élèves'
     ) {
       continue
     }
@@ -606,17 +667,46 @@ function parseTextLines(
         ''
       )
 
-    const columns =
-      withoutNumber
+    const tabColumns =
+      originalLine
         .split(/\t+/)
-        .map((v) => v.trim())
+        .map((value) =>
+          value.trim()
+        )
         .filter(Boolean)
 
-    if (columns.length >= 2) {
+    if (tabColumns.length >= 2) {
+      const possibleGender =
+        normalizeHeader(
+          tabColumns[
+            tabColumns.length - 1
+          ]
+        )
+
+      let sexe = ''
+
+      if (
+        ['f', 'feminin', 'female']
+          .includes(
+            possibleGender
+          )
+      ) {
+        sexe = 'F'
+        tabColumns.pop()
+      } else if (
+        ['m', 'masculin', 'male']
+          .includes(
+            possibleGender
+          )
+      ) {
+        sexe = 'M'
+        tabColumns.pop()
+      }
+
       rows.push({
-        Nom: columns[0] ?? '',
-        Prenom: columns[1] ?? '',
-        Sexe: columns[2] ?? ''
+        Nom: tabColumns[0] ?? '',
+        Prenom: tabColumns[1] ?? '',
+        Sexe: sexe
       })
 
       continue
@@ -639,16 +729,14 @@ function parseTextLines(
     let sexe = ''
 
     if (
-      ['f', 'feminin', 'female'].includes(
-        possibleGender
-      )
+      ['f', 'feminin', 'female']
+        .includes(possibleGender)
     ) {
       sexe = 'F'
       parts.pop()
     } else if (
-      ['m', 'masculin', 'male'].includes(
-        possibleGender
-      )
+      ['m', 'masculin', 'male']
+        .includes(possibleGender)
     ) {
       sexe = 'M'
       parts.pop()
