@@ -518,3 +518,198 @@ async function parsePDF(
       }
 
       grouped
+        .get(y)!
+        .push({
+          x: item.x,
+          text: item.text
+        })
+    }
+
+    lines.push(
+      ...Array.from(
+        grouped.entries()
+      )
+        .sort(
+          (a, b) => b[0] - a[0]
+        )
+        .map(([, values]) =>
+          values
+            .sort(
+              (a, b) => a.x - b.x
+            )
+            .map((v) => v.text)
+            .join(' ')
+            .trim()
+        )
+        .filter(Boolean)
+    )
+  }
+
+  if (lines.length === 0) {
+    throw new Error(
+      'Aucun texte exploitable n’a été trouvé dans le PDF. Il peut s’agir d’un PDF scanné.'
+    )
+  }
+
+  const rows =
+    parseTextLines(lines)
+
+  if (rows.length === 0) {
+    throw new Error(
+      'Le PDF a été lu, mais aucune liste d’élèves exploitable n’a été détectée.'
+    )
+  }
+
+  return {
+    rows: cleanRows(rows),
+    format: 'pdf',
+    headers: [],
+    warnings: [
+      'Le PDF a été analysé à partir de son texte. Un PDF scanné nécessitera une étape OCR.'
+    ]
+  }
+}
+
+function parseTextLines(
+  lines: string[]
+): ImportedRow[] {
+  const rows: ImportedRow[] = []
+
+  for (const originalLine of lines) {
+    const line =
+      originalLine
+        .replace(/\s+/g, ' ')
+        .trim()
+
+    if (!line) continue
+
+    const normalized =
+      normalizeHeader(line)
+
+    if (
+      normalized.includes('nom') &&
+      normalized.includes('prenom')
+    ) {
+      continue
+    }
+
+    if (
+      normalized === 'listeeleves' ||
+      normalized === 'listedeclasse'
+    ) {
+      continue
+    }
+
+    const withoutNumber =
+      line.replace(
+        /^\d+[\s.)-]+/,
+        ''
+      )
+
+    const columns =
+      withoutNumber
+        .split(/\t+/)
+        .map((v) => v.trim())
+        .filter(Boolean)
+
+    if (columns.length >= 2) {
+      rows.push({
+        Nom: columns[0] ?? '',
+        Prenom: columns[1] ?? '',
+        Sexe: columns[2] ?? ''
+      })
+
+      continue
+    }
+
+    const parts =
+      withoutNumber
+        .split(/\s+/)
+        .filter(Boolean)
+
+    if (parts.length < 2) {
+      continue
+    }
+
+    const possibleGender =
+      normalizeHeader(
+        parts[parts.length - 1]
+      )
+
+    let sexe = ''
+
+    if (
+      ['f', 'feminin', 'female'].includes(
+        possibleGender
+      )
+    ) {
+      sexe = 'F'
+      parts.pop()
+    } else if (
+      ['m', 'masculin', 'male'].includes(
+        possibleGender
+      )
+    ) {
+      sexe = 'M'
+      parts.pop()
+    }
+
+    const nom =
+      parts.shift() ?? ''
+
+    const prenom =
+      parts.join(' ')
+
+    if (nom && prenom) {
+      rows.push({
+        Nom: nom,
+        Prenom: prenom,
+        Sexe: sexe
+      })
+    }
+  }
+
+  return rows
+}
+
+function cleanRows(
+  rows: ImportedRow[]
+): ImportedRow[] {
+  return rows.filter(
+    (row) =>
+      Boolean(
+        row.Nom?.trim() ||
+        row.Prenom?.trim()
+      )
+  )
+}
+
+export async function parseStudentsFile(
+  file: File
+): Promise<ImportResult> {
+  const extension =
+    file.name
+      .split('.')
+      .pop()
+      ?.toLowerCase()
+
+  switch (extension) {
+    case 'csv':
+      return parseCsv(file)
+
+    case 'xlsx':
+    case 'xls':
+      return parseExcel(file)
+
+    case 'docx':
+      return parseWord(file)
+
+    case 'pdf':
+      return parsePDF(file)
+
+    default:
+      throw new Error(
+        'Format non pris en charge. Utilisez Excel (.xlsx/.xls), CSV (.csv), Word (.docx) ou PDF (.pdf).'
+      )
+  }
+}
