@@ -10,7 +10,8 @@ import {
   MessageCircle,
   Settings,
   X,
-  Save
+  Save,
+  CheckSquare
 } from 'lucide-react'
 
 import { supabase } from '@/lib/supabase'
@@ -74,6 +75,19 @@ export default function ClassDetail() {
     coefficient: 1,
     max_score: 20
   })
+
+  // COMMUNICATION WHATSAPP
+  const [selectedCommunicationStudents, setSelectedCommunicationStudents] =
+    useState<string[]>([])
+
+  const [communicationMessage, setCommunicationMessage] =
+    useState('')
+
+  const [sendingCommunication, setSendingCommunication] =
+    useState(false)
+
+  const [communicationResult, setCommunicationResult] =
+    useState('')
 
   useEffect(() => {
     if (user && classId) {
@@ -385,6 +399,121 @@ export default function ClassDetail() {
     setErrorMessage('')
   }
 
+  // =========================
+  // COMMUNICATION WHATSAPP
+  // =========================
+
+  const whatsappStudents = students.filter(
+    (student) =>
+      Boolean(
+        student.parent_whatsapp &&
+          student.parent_whatsapp.trim() !== ''
+      )
+  )
+
+  const selectedWhatsappStudents = whatsappStudents.filter(
+    (student) =>
+      selectedCommunicationStudents.includes(student.id)
+  )
+
+  function toggleCommunicationStudent(studentId: string) {
+    setCommunicationResult('')
+
+    setSelectedCommunicationStudents((current) =>
+      current.includes(studentId)
+        ? current.filter((id) => id !== studentId)
+        : [...current, studentId]
+    )
+  }
+
+  function selectAllCommunicationStudents() {
+    setCommunicationResult('')
+    setSelectedCommunicationStudents(
+      whatsappStudents.map((student) => student.id)
+    )
+  }
+
+  function clearCommunicationSelection() {
+    setCommunicationResult('')
+    setSelectedCommunicationStudents([])
+  }
+
+  function openWhatsAppCommunication() {
+    const message = communicationMessage.trim()
+
+    if (!message) {
+      setCommunicationResult(
+        'Écrivez d’abord le message à envoyer.'
+      )
+      return
+    }
+
+    if (selectedWhatsappStudents.length === 0) {
+      setCommunicationResult(
+        'Sélectionnez au moins un destinataire.'
+      )
+      return
+    }
+
+    setSendingCommunication(true)
+    setCommunicationResult('')
+
+    let openedCount = 0
+
+    for (const student of selectedWhatsappStudents) {
+      const number = student.parent_whatsapp
+        ?.replace(/\D/g, '')
+        .trim()
+
+      if (!number) continue
+
+      const personalizedMessage =
+        `Bonjour, message concernant ${student.first_name} ${student.last_name} ` +
+        `(classe ${schoolClass?.name ?? ''}).\n\n${message}`
+
+      const whatsappUrl =
+        `https://wa.me/${number}?text=` +
+        encodeURIComponent(personalizedMessage)
+
+      window.open(whatsappUrl, '_blank')
+      openedCount++
+    }
+
+    setSendingCommunication(false)
+
+    setCommunicationResult(
+      `${openedCount} conversation${
+        openedCount > 1 ? 's' : ''
+      } WhatsApp ouverte${openedCount > 1 ? 's' : ''}.`
+    )
+
+    if (user && classId) {
+      void Promise.all(
+        selectedWhatsappStudents.map((student) => {
+          const number =
+            student.parent_whatsapp?.trim() ?? ''
+
+          const personalizedMessage =
+            `Bonjour, message concernant ${student.first_name} ${student.last_name} ` +
+            `(classe ${schoolClass?.name ?? ''}).\n\n${message}`
+
+          return supabase
+            .from('whatsapp_history')
+            .insert({
+              teacher_id: user.id,
+              student_id: student.id,
+              class_id: classId,
+              message_type: 'communication_classe',
+              message_content: personalizedMessage,
+              parent_whatsapp: number,
+              status: 'sent',
+              share_method: 'wa_link_fallback'
+            })
+        })
+      )
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -427,13 +556,7 @@ export default function ClassDetail() {
       grades[student.id]?.score !== undefined
   ).length
 
-  const whatsappCount = students.filter(
-    (student) =>
-      Boolean(
-        student.parent_whatsapp &&
-          student.parent_whatsapp.trim() !== ''
-      )
-  ).length
+  const whatsappCount = whatsappStudents.length
 
   const missingWhatsappCount =
     students.length - whatsappCount
@@ -1102,53 +1225,190 @@ export default function ClassDetail() {
 
       {/* COMMUNICATION */}
       {activeSection === 'communication' && (
-        <section className="card">
-          <div className="flex items-center gap-2 mb-2">
-            <MessageCircle
-              size={20}
-              className="text-primary-500"
-            />
+        <section className="card space-y-5">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <MessageCircle
+                size={20}
+                className="text-primary-500"
+              />
 
-            <h2 className="font-semibold text-primary-800">
-              Communication — {schoolClass.name}
-            </h2>
+              <h2 className="font-semibold text-primary-800">
+                Communication — {schoolClass.name}
+              </h2>
+            </div>
+
+            <p className="text-sm text-primary-500">
+              Choisissez les parents auxquels vous souhaitez
+              envoyer un message WhatsApp.
+            </p>
           </div>
 
-          <p className="text-sm text-primary-500">
-            Cet espace regroupera la communication avec les
-            parents, les élèves et l'administration.
-          </p>
+          {/* DESTINATAIRES */}
+          <div className="border border-primary-100 rounded-lg">
+            <div className="p-3 border-b border-primary-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <p className="font-medium text-primary-800 text-sm">
+                  Destinataires
+                </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
-            <div className="border border-primary-100 rounded-lg p-3">
-              <p className="font-medium text-primary-800 text-sm">
-                Parents
-              </p>
+                <p className="text-xs text-primary-400 mt-1">
+                  {selectedWhatsappStudents.length} sélectionné
+                  {selectedWhatsappStudents.length > 1 ? 's' : ''}
+                  {' · '}
+                  {whatsappStudents.length} avec WhatsApp
+                </p>
+              </div>
 
-              <p className="text-xs text-primary-400 mt-1">
-                Bulletins, notes, absences et difficultés.
-              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={selectAllCommunicationStudents}
+                  className="btn-secondary text-xs flex items-center gap-1"
+                  disabled={whatsappStudents.length === 0}
+                >
+                  <CheckSquare size={14} />
+                  Tout sélectionner
+                </button>
+
+                <button
+                  type="button"
+                  onClick={clearCommunicationSelection}
+                  className="btn-secondary text-xs"
+                  disabled={
+                    selectedCommunicationStudents.length === 0
+                  }
+                >
+                  Désélectionner
+                </button>
+              </div>
             </div>
 
-            <div className="border border-primary-100 rounded-lg p-3">
-              <p className="font-medium text-primary-800 text-sm">
-                Élèves
-              </p>
+            {whatsappStudents.length === 0 ? (
+              <div className="p-4">
+                <p className="text-sm text-primary-400">
+                  Aucun numéro WhatsApp de parent n'est enregistré
+                  pour cette classe.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-primary-100 max-h-80 overflow-y-auto">
+                {whatsappStudents.map((student) => {
+                  const selected =
+                    selectedCommunicationStudents.includes(
+                      student.id
+                    )
 
-              <p className="text-xs text-primary-400 mt-1">
-                Informations et communications individuelles.
+                  return (
+                    <label
+                      key={student.id}
+                      className={`flex items-center gap-3 p-3 cursor-pointer transition ${
+                        selected
+                          ? 'bg-primary-50'
+                          : 'hover:bg-primary-50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={() =>
+                          toggleCommunicationStudent(
+                            student.id
+                          )
+                        }
+                        className="h-4 w-4"
+                      />
+
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-primary-800">
+                          {student.last_name}{' '}
+                          {student.first_name}
+                        </p>
+
+                        <p className="text-xs text-primary-400">
+                          {student.parent_whatsapp}
+                        </p>
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+
+            {missingWhatsappCount > 0 && (
+              <div className="p-3 border-t border-primary-100">
+                <p className="text-xs text-primary-400">
+                  {missingWhatsappCount} élève
+                  {missingWhatsappCount > 1 ? 's' : ''} sans numéro
+                  WhatsApp ne peut
+                  {missingWhatsappCount > 1 ? 'vent' : ''} pas être
+                  sélectionné
+                  {missingWhatsappCount > 1 ? 's' : ''}.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* MESSAGE */}
+          <div>
+            <label className="block text-sm font-medium text-primary-800 mb-2">
+              Message
+            </label>
+
+            <textarea
+              value={communicationMessage}
+              onChange={(e) => {
+                setCommunicationMessage(e.target.value)
+                setCommunicationResult('')
+              }}
+              placeholder="Écrivez votre message aux parents..."
+              rows={6}
+              className="input-field w-full resize-y"
+            />
+
+            <p className="text-xs text-primary-400 mt-1">
+              Le nom de l'élève et la classe seront ajoutés
+              automatiquement au début du message.
+            </p>
+          </div>
+
+          {/* RÉSULTAT */}
+          {communicationResult && (
+            <div className="border border-primary-100 bg-primary-50 rounded-lg p-3">
+              <p className="text-sm text-primary-700">
+                {communicationResult}
               </p>
             </div>
+          )}
 
-            <div className="border border-primary-100 rounded-lg p-3">
-              <p className="font-medium text-primary-800 text-sm">
-                Administration
-              </p>
+          {/* ACTION */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <button
+              type="button"
+              onClick={openWhatsAppCommunication}
+              disabled={
+                sendingCommunication ||
+                selectedWhatsappStudents.length === 0 ||
+                !communicationMessage.trim()
+              }
+              className="btn-primary flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+            >
+              <MessageCircle size={17} />
 
-              <p className="text-xs text-primary-400 mt-1">
-                Informations et échanges liés à la classe.
-              </p>
-            </div>
+              {sendingCommunication
+                ? 'Ouverture…'
+                : `Ouvrir WhatsApp pour ${
+                    selectedWhatsappStudents.length
+                  } destinataire${
+                    selectedWhatsappStudents.length > 1
+                      ? 's'
+                      : ''
+                  }`}
+            </button>
+
+            <span className="text-xs text-primary-400">
+              WhatsApp s'ouvrira avec le message déjà préparé.
+            </span>
           </div>
         </section>
       )}
