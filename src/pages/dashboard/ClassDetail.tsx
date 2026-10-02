@@ -7,7 +7,8 @@ import {
   ClipboardList,
   BarChart3,
   FileText,
-  X
+  X,
+  Save
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/AuthContext'
@@ -15,7 +16,8 @@ import type {
   SchoolClass,
   Student,
   Evaluation,
-  EvaluationType
+  EvaluationType,
+  Grade
 } from '@/types/database'
 
 export default function ClassDetail() {
@@ -27,11 +29,21 @@ export default function ClassDetail() {
   const [students, setStudents] = useState<Student[]>([])
   const [evaluations, setEvaluations] = useState<Evaluation[]>([])
 
+  const [selectedEvaluation, setSelectedEvaluation] =
+    useState<Evaluation | null>(null)
+
+  const [grades, setGrades] = useState<Record<string, Grade>>({})
+
   const [loading, setLoading] = useState(true)
+  const [loadingGrades, setLoadingGrades] = useState(false)
+  const [savingGrade, setSavingGrade] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState('')
 
-  const [showEvaluationForm, setShowEvaluationForm] = useState(false)
-  const [savingEvaluation, setSavingEvaluation] = useState(false)
+  const [showEvaluationForm, setShowEvaluationForm] =
+    useState(false)
+
+  const [savingEvaluation, setSavingEvaluation] =
+    useState(false)
 
   const [form, setForm] = useState({
     title: '',
@@ -81,17 +93,9 @@ export default function ClassDetail() {
             .order('eval_date', { ascending: false })
         ])
 
-      if (classRes.error) {
-        throw classRes.error
-      }
-
-      if (studentsRes.error) {
-        throw studentsRes.error
-      }
-
-      if (evaluationsRes.error) {
-        throw evaluationsRes.error
-      }
+      if (classRes.error) throw classRes.error
+      if (studentsRes.error) throw studentsRes.error
+      if (evaluationsRes.error) throw evaluationsRes.error
 
       setSchoolClass(classRes.data as SchoolClass)
       setStudents((studentsRes.data as Student[]) ?? [])
@@ -106,6 +110,156 @@ export default function ClassDetail() {
       )
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function openEvaluation(evaluation: Evaluation) {
+    setSelectedEvaluation(evaluation)
+    setLoadingGrades(true)
+    setErrorMessage('')
+
+    const { data, error } = await supabase
+      .from('grades')
+      .select('*')
+      .eq('evaluation_id', evaluation.id)
+      .eq('teacher_id', user!.id)
+
+    if (error) {
+      console.error(
+        '[ClassDetail] Erreur chargement notes :',
+        error
+      )
+
+      setErrorMessage(
+        `Impossible de charger les notes : ${error.message}`
+      )
+
+      setGrades({})
+      setLoadingGrades(false)
+      return
+    }
+
+    const gradeMap: Record<string, Grade> = {}
+
+    for (const grade of (data as Grade[]) ?? []) {
+      gradeMap[grade.student_id] = grade
+    }
+
+    setGrades(gradeMap)
+    setLoadingGrades(false)
+  }
+
+  function closeEvaluation() {
+    setSelectedEvaluation(null)
+    setGrades({})
+    setErrorMessage('')
+  }
+
+  async function saveGrade(
+    studentId: string,
+    value: string
+  ) {
+    if (!user || !selectedEvaluation) return
+
+    const existing = grades[studentId]
+
+    const trimmedValue = value.trim()
+
+    if (trimmedValue === '') {
+      if (existing) {
+        setSavingGrade(studentId)
+
+        const { error } = await supabase
+          .from('grades')
+          .delete()
+          .eq('id', existing.id)
+          .eq('teacher_id', user.id)
+
+        setSavingGrade(null)
+
+        if (error) {
+          setErrorMessage(
+            `Impossible de supprimer la note : ${error.message}`
+          )
+          return
+        }
+
+        const updated = { ...grades }
+        delete updated[studentId]
+        setGrades(updated)
+      }
+
+      return
+    }
+
+    const score = Number(trimmedValue)
+
+    if (
+      Number.isNaN(score) ||
+      score < 0 ||
+      score > selectedEvaluation.max_score
+    ) {
+      setErrorMessage(
+        `La note doit être comprise entre 0 et ${selectedEvaluation.max_score}.`
+      )
+      return
+    }
+
+    setSavingGrade(studentId)
+    setErrorMessage('')
+
+    try {
+      if (existing) {
+        const { data, error } = await supabase
+          .from('grades')
+          .update({
+            score,
+            source: 'manual'
+          })
+          .eq('id', existing.id)
+          .eq('teacher_id', user.id)
+          .select()
+          .single()
+
+        if (error) throw error
+
+        setGrades((current) => ({
+          ...current,
+          [studentId]: data as Grade
+        }))
+      } else {
+        const { data, error } = await supabase
+          .from('grades')
+          .insert({
+            teacher_id: user.id,
+            evaluation_id: selectedEvaluation.id,
+            student_id: studentId,
+            score,
+            source: 'manual'
+          })
+          .select()
+          .single()
+
+        if (error) throw error
+
+        setGrades((current) => ({
+          ...current,
+          [studentId]: data as Grade
+        }))
+      }
+    } catch (error) {
+      console.error(
+        '[ClassDetail] Erreur sauvegarde note :',
+        error
+      )
+
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'Impossible de sauvegarder la note.'
+      )
+    } finally {
+      setSavingGrade(null)
     }
   }
 
@@ -139,7 +293,9 @@ export default function ClassDetail() {
     }
 
     if (form.max_score <= 0) {
-      setErrorMessage('La note maximale doit être supérieure à 0.')
+      setErrorMessage(
+        'La note maximale doit être supérieure à 0.'
+      )
       return
     }
 
@@ -147,7 +303,7 @@ export default function ClassDetail() {
     setErrorMessage('')
 
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('evaluations')
         .insert({
           teacher_id: user.id,
@@ -159,15 +315,20 @@ export default function ClassDetail() {
           coefficient: form.coefficient,
           max_score: form.max_score
         })
+        .select()
+        .single()
 
-      if (error) {
-        throw error
-      }
+      if (error) throw error
 
       resetEvaluationForm()
       setShowEvaluationForm(false)
 
       await loadClass()
+
+      if (data) {
+        setSelectedEvaluation(data as Evaluation)
+        await openEvaluation(data as Evaluation)
+      }
     } catch (error) {
       console.error(
         '[ClassDetail] Erreur création évaluation :',
@@ -213,9 +374,138 @@ export default function ClassDetail() {
           Retour aux classes
         </button>
 
-        <div className="card text-sm text-red-700 bg-red-50 border border-red-200">
+        <div className="card border border-red-200 bg-red-50 text-sm text-red-700">
           {errorMessage || 'Classe introuvable.'}
         </div>
+      </div>
+    )
+  }
+
+  if (selectedEvaluation) {
+    const gradedCount = students.filter(
+      (student) => grades[student.id]?.score !== null &&
+        grades[student.id]?.score !== undefined
+    ).length
+
+    return (
+      <div className="space-y-4">
+        <button
+          onClick={closeEvaluation}
+          className="flex items-center gap-1 text-sm text-primary-600"
+        >
+          <ArrowLeft size={16} />
+          Retour à la classe
+        </button>
+
+        <div>
+          <h1 className="text-xl font-semibold text-primary-800">
+            {selectedEvaluation.title}
+          </h1>
+
+          <p className="text-sm text-primary-500">
+            {schoolClass.name}
+            {' · '}
+            {selectedEvaluation.subject}
+            {' · '}
+            {new Date(
+              selectedEvaluation.eval_date
+            ).toLocaleDateString('fr-FR')}
+          </p>
+
+          <p className="text-xs text-primary-400 mt-1">
+            Coefficient {selectedEvaluation.coefficient}
+            {' · '}
+            Note sur {selectedEvaluation.max_score}
+            {' · '}
+            {gradedCount}/{students.length} élèves notés
+          </p>
+        </div>
+
+        {errorMessage && (
+          <div className="card border border-red-200 bg-red-50 text-sm text-red-700">
+            {errorMessage}
+          </div>
+        )}
+
+        {loadingGrades ? (
+          <p className="text-sm text-primary-400">
+            Chargement des notes…
+          </p>
+        ) : (
+          <div className="card">
+            <div className="flex items-center justify-between pb-3 mb-2 border-b border-primary-100">
+              <h2 className="font-semibold text-primary-800">
+                Notes des élèves
+              </h2>
+
+              <span className="text-xs text-primary-400">
+                /{selectedEvaluation.max_score}
+              </span>
+            </div>
+
+            {students.length === 0 ? (
+              <p className="text-sm text-primary-400">
+                Aucun élève dans cette classe.
+              </p>
+            ) : (
+              <div className="divide-y divide-primary-100">
+                {students.map((student, index) => {
+                  const grade = grades[student.id]
+                  const score = grade?.score
+
+                  return (
+                    <div
+                      key={student.id}
+                      className="py-3 flex items-center gap-3"
+                    >
+                      <span className="w-7 text-xs text-primary-400">
+                        {index + 1}
+                      </span>
+
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm text-primary-800 truncate">
+                          {student.last_name}{' '}
+                          {student.first_name}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          max={selectedEvaluation.max_score}
+                          step={0.25}
+                          className="input-field w-24 text-center"
+                          defaultValue={
+                            score !== null &&
+                            score !== undefined
+                              ? score
+                              : ''
+                          }
+                          key={`${student.id}-${score ?? 'empty'}`}
+                          onBlur={(e) =>
+                            void saveGrade(
+                              student.id,
+                              e.target.value
+                            )
+                          }
+                          placeholder="—"
+                        />
+
+                        {savingGrade === student.id && (
+                          <Save
+                            size={16}
+                            className="text-primary-500 animate-pulse"
+                          />
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     )
   }
@@ -300,7 +590,7 @@ export default function ClassDetail() {
           </div>
 
           <p className="text-sm text-primary-400 mt-3">
-            À venir
+            Par évaluation
           </p>
         </div>
 
@@ -459,6 +749,7 @@ export default function ClassDetail() {
             <h2 className="font-semibold text-primary-800">
               Élèves
             </h2>
+
             <p className="text-xs text-primary-400">
               Élèves actifs de cette classe
             </p>
@@ -503,8 +794,9 @@ export default function ClassDetail() {
             <h2 className="font-semibold text-primary-800">
               Évaluations
             </h2>
+
             <p className="text-xs text-primary-400">
-              Toutes les évaluations de cette classe
+              Cliquez sur une évaluation pour saisir les notes
             </p>
           </div>
 
@@ -521,9 +813,13 @@ export default function ClassDetail() {
         ) : (
           <div className="divide-y divide-primary-100">
             {evaluations.map((evaluation) => (
-              <div
+              <button
                 key={evaluation.id}
-                className="py-3 flex items-center justify-between gap-3"
+                type="button"
+                onClick={() =>
+                  void openEvaluation(evaluation)
+                }
+                className="w-full py-3 flex items-center justify-between gap-3 text-left hover:bg-primary-50 rounded-lg px-2"
               >
                 <div>
                   <p className="font-medium text-primary-800 text-sm">
@@ -546,7 +842,7 @@ export default function ClassDetail() {
                 <span className="text-xs px-2 py-1 rounded-full bg-primary-50 text-primary-600 capitalize">
                   {evaluation.type}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
         )}
