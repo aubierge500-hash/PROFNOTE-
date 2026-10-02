@@ -2,12 +2,8 @@ import { NavLink, Outlet } from 'react-router-dom'
 import {
   LayoutDashboard,
   School,
-  Users,
-  ClipboardList,
   UserCircle,
   LogOut,
-  ScanLine,
-  MessageCircle,
 } from 'lucide-react'
 import { useAuth } from '@/lib/AuthContext'
 
@@ -22,21 +18,6 @@ const navItems = [
     to: '/classes',
     label: 'Classes',
     icon: School,
-  },
-  {
-    to: '/eleves',
-    label: 'Élèves',
-    icon: Users,
-  },
-  {
-    to: '/evaluations',
-    label: 'Évaluations',
-    icon: ClipboardList,
-  },
-  {
-    to: '/whatsapp-historique',
-    label: 'WhatsApp',
-    icon: MessageCircle,
   },
 ]
 
@@ -55,7 +36,7 @@ export default function DashboardLayout() {
           </p>
         </div>
 
-        {/* Navigation */}
+        {/* Navigation principale */}
         <nav className="flex-1 p-3 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon
@@ -78,21 +59,6 @@ export default function DashboardLayout() {
               </NavLink>
             )
           })}
-
-          {/* Scanner */}
-          <NavLink
-            to="/scanner"
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-primary-600 text-white'
-                  : 'text-primary-200 hover:bg-primary-700'
-              }`
-            }
-          >
-            <ScanLine size={18} />
-            Scanner
-          </NavLink>
         </nav>
 
         {/* Profil + déconnexion */}
