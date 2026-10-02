@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Plus,
   Archive,
   Trash2,
   Pencil,
   FileSpreadsheet,
-  FileText
+  FileText,
+  ArrowRight
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/AuthContext'
@@ -18,6 +20,7 @@ import type { SchoolClass } from '@/types/database'
 
 export default function Classes() {
   const { user, profile } = useAuth()
+  const navigate = useNavigate()
 
   const [classes, setClasses] = useState<SchoolClass[]>([])
   const [loading, setLoading] = useState(true)
@@ -54,9 +57,11 @@ export default function Classes() {
 
     if (error) {
       console.error('[Classes] Erreur chargement :', error)
+
       setErrorMessage(
         `Impossible de charger les classes : ${error.message}`
       )
+
       setClasses([])
     } else {
       setClasses((data as SchoolClass[]) ?? [])
@@ -154,6 +159,8 @@ export default function Classes() {
   }
 
   async function toggleArchive(c: SchoolClass) {
+    if (!user) return
+
     setErrorMessage('')
 
     const { error } = await supabase
@@ -162,7 +169,7 @@ export default function Classes() {
         is_archived: !c.is_archived
       })
       .eq('id', c.id)
-      .eq('teacher_id', user!.id)
+      .eq('teacher_id', user.id)
 
     if (error) {
       console.error('[Classes] Erreur archivage :', error)
@@ -174,6 +181,8 @@ export default function Classes() {
   }
 
   async function handleDelete(c: SchoolClass) {
+    if (!user) return
+
     if (
       !confirm(
         `Supprimer la classe « ${c.name} » ? Cette action supprimera aussi les élèves et évaluations liés.`
@@ -188,7 +197,7 @@ export default function Classes() {
       .from('classes')
       .delete()
       .eq('id', c.id)
-      .eq('teacher_id', user!.id)
+      .eq('teacher_id', user.id)
 
     if (error) {
       console.error('[Classes] Erreur suppression :', error)
@@ -334,51 +343,64 @@ export default function Classes() {
                 c.is_archived ? 'opacity-50' : ''
               }`}
             >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-primary-800">
-                    {c.name}
-                  </p>
+              <button
+                type="button"
+                onClick={() => navigate(`/classes/${c.id}`)}
+                className="w-full text-left"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-primary-800">
+                      {c.name}
+                    </p>
 
-                  <p className="text-xs text-primary-400">
-                    {c.level ?? ''}
-                    {' · '}
-                    {c.school_year}
+                    <p className="text-xs text-primary-400">
+                      {c.level ?? ''}
+                      {' · '}
+                      {c.school_year}
+                      {c.is_archived
+                        ? ' · Archivée'
+                        : ''}
+                    </p>
+                  </div>
 
-                    {c.is_archived
-                      ? ' · Archivée'
-                      : ''}
-                  </p>
+                  <ArrowRight
+                    size={18}
+                    className="text-primary-400 shrink-0"
+                  />
                 </div>
+              </button>
 
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => openEdit(c)}
-                    className="p-2 text-primary-500 hover:bg-primary-50 rounded-lg"
-                    disabled={saving}
-                  >
-                    <Pencil size={16} />
-                  </button>
+              <div className="flex gap-1 mt-3 pt-3 border-t border-primary-100">
+                <button
+                  onClick={() => openEdit(c)}
+                  className="p-2 text-primary-500 hover:bg-primary-50 rounded-lg"
+                  disabled={saving}
+                  title="Modifier"
+                >
+                  <Pencil size={16} />
+                </button>
 
-                  <button
-                    onClick={() => void toggleArchive(c)}
-                    className="p-2 text-primary-500 hover:bg-primary-50 rounded-lg"
-                    disabled={saving}
-                  >
-                    <Archive size={16} />
-                  </button>
+                <button
+                  onClick={() => void toggleArchive(c)}
+                  className="p-2 text-primary-500 hover:bg-primary-50 rounded-lg"
+                  disabled={saving}
+                  title={c.is_archived ? 'Désarchiver' : 'Archiver'}
+                >
+                  <Archive size={16} />
+                </button>
 
-                  <button
-                    onClick={() => void handleDelete(c)}
-                    className="p-2 text-danger hover:bg-red-50 rounded-lg"
-                    disabled={saving}
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
+                <button
+                  onClick={() => void handleDelete(c)}
+                  className="p-2 text-danger hover:bg-red-50 rounded-lg"
+                  disabled={saving}
+                  title="Supprimer"
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
 
-              <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-primary-100">
+              <div className="flex flex-wrap gap-2 mt-3">
                 <button
                   onClick={() => void handleExportExcel(c)}
                   disabled={
