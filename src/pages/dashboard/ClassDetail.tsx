@@ -376,8 +376,7 @@ export default function ClassDetail() {
         if (
           Number.isNaN(score) ||
           score < 0 ||
-          score >
-            selectedEvaluation.max_score
+          score > selectedEvaluation.max_score
         ) {
           throw new Error(
             `Note invalide pour ${student.last_name} ${student.first_name}.`
@@ -468,7 +467,6 @@ export default function ClassDetail() {
       setErrorMessage(
         "Le titre de l'évaluation est obligatoire."
       )
-
       return
     }
 
@@ -476,7 +474,6 @@ export default function ClassDetail() {
       setErrorMessage(
         'La matière est obligatoire.'
       )
-
       return
     }
 
@@ -484,7 +481,6 @@ export default function ClassDetail() {
       setErrorMessage(
         'Le coefficient doit être supérieur à 0.'
       )
-
       return
     }
 
@@ -492,7 +488,6 @@ export default function ClassDetail() {
       setErrorMessage(
         'La note maximale doit être supérieure à 0.'
       )
-
       return
     }
 
@@ -615,17 +610,16 @@ export default function ClassDetail() {
       setCommunicationResult(
         'Écrivez d’abord le message à envoyer.'
       )
-
       return
     }
 
     if (
-      selectedWhatsappStudents.length === 0
+      selectedWhatsappStudents.length ===
+      0
     ) {
       setCommunicationResult(
         'Sélectionnez au moins un destinataire.'
       )
-
       return
     }
 
@@ -871,7 +865,6 @@ export default function ClassDetail() {
               size={18}
               className="text-primary-500"
             />
-
             <span className="text-sm text-primary-500">
               Élèves
             </span>
@@ -896,7 +889,6 @@ export default function ClassDetail() {
               size={18}
               className="text-primary-500"
             />
-
             <span className="text-sm text-primary-500">
               Évaluations
             </span>
@@ -919,7 +911,6 @@ export default function ClassDetail() {
               size={18}
               className="text-primary-500"
             />
-
             <span className="text-sm text-primary-500">
               Résultats
             </span>
@@ -942,7 +933,6 @@ export default function ClassDetail() {
               size={18}
               className="text-primary-500"
             />
-
             <span className="text-sm text-primary-500">
               Bulletins
             </span>
@@ -997,7 +987,7 @@ export default function ClassDetail() {
 
               return (
                 <button
-                  key={section}
+                  key={current}
                   type="button"
                   onClick={() =>
                     selectSection(
@@ -1936,7 +1926,6 @@ export default function ClassDetail() {
                   <CheckSquare
                     size={14}
                   />
-
                   Tout sélectionner
                 </button>
 
