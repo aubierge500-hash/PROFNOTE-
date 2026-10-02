@@ -12,9 +12,11 @@ import {
   X,
   Save
 } from 'lucide-react'
+
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/AuthContext'
 import ClassWhatsAppSendButton from '@/components/ClassWhatsAppSendButton'
+
 import type {
   SchoolClass,
   Student,
@@ -36,9 +38,12 @@ export default function ClassDetail() {
   const navigate = useNavigate()
   const { user, profile } = useAuth()
 
-  const [schoolClass, setSchoolClass] = useState<SchoolClass | null>(null)
+  const [schoolClass, setSchoolClass] =
+    useState<SchoolClass | null>(null)
+
   const [students, setStudents] = useState<Student[]>([])
   const [evaluations, setEvaluations] = useState<Evaluation[]>([])
+
   const [selectedEvaluation, setSelectedEvaluation] =
     useState<Evaluation | null>(null)
 
@@ -54,6 +59,7 @@ export default function ClassDetail() {
     useState<string | null>(null)
 
   const [errorMessage, setErrorMessage] = useState('')
+
   const [showEvaluationForm, setShowEvaluationForm] =
     useState(false)
 
@@ -116,7 +122,10 @@ export default function ClassDetail() {
       setStudents((studentsRes.data as Student[]) ?? [])
       setEvaluations((evaluationsRes.data as Evaluation[]) ?? [])
     } catch (error) {
-      console.error('[ClassDetail] Erreur chargement :', error)
+      console.error(
+        '[ClassDetail] Erreur chargement :',
+        error
+      )
 
       setErrorMessage(
         error instanceof Error
@@ -420,8 +429,10 @@ export default function ClassDetail() {
 
   const whatsappCount = students.filter(
     (student) =>
-      student.parent_whatsapp &&
-      student.parent_whatsapp.trim() !== ''
+      Boolean(
+        student.parent_whatsapp &&
+          student.parent_whatsapp.trim() !== ''
+      )
   ).length
 
   const missingWhatsappCount =
@@ -429,7 +440,7 @@ export default function ClassDetail() {
 
   return (
     <div className="space-y-5">
-      {/* EN-TÊTE DE LA CLASSE */}
+      {/* EN-TÊTE */}
       <div>
         <button
           onClick={() => navigate('/classes')}
@@ -475,7 +486,10 @@ export default function ClassDetail() {
           className="card text-left hover:bg-primary-50 transition"
         >
           <div className="flex items-center gap-2">
-            <Users size={18} className="text-primary-500" />
+            <Users
+              size={18}
+              className="text-primary-500"
+            />
             <span className="text-sm text-primary-500">
               Élèves
             </span>
@@ -706,6 +720,7 @@ export default function ClassDetail() {
                 </h2>
 
                 <button
+                  type="button"
                   onClick={() =>
                     setShowEvaluationForm(false)
                   }
@@ -734,8 +749,4 @@ export default function ClassDetail() {
                   className="input-field"
                   value={form.type}
                   onChange={(e) =>
-                    setForm({
-                      ...form,
-                      type: e.target.value as EvaluationType
-                    })
- 
+                    setFo
