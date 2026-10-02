@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/AuthContext'
+import ClassWhatsAppSendButton from '@/components/ClassWhatsAppSendButton'
 import type {
   SchoolClass,
   Student,
@@ -33,14 +34,11 @@ type ClassSection =
 export default function ClassDetail() {
   const { classId } = useParams<{ classId: string }>()
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
 
-  const [schoolClass, setSchoolClass] =
-    useState<SchoolClass | null>(null)
-
+  const [schoolClass, setSchoolClass] = useState<SchoolClass | null>(null)
   const [students, setStudents] = useState<Student[]>([])
   const [evaluations, setEvaluations] = useState<Evaluation[]>([])
-
   const [selectedEvaluation, setSelectedEvaluation] =
     useState<Evaluation | null>(null)
 
@@ -56,7 +54,6 @@ export default function ClassDetail() {
     useState<string | null>(null)
 
   const [errorMessage, setErrorMessage] = useState('')
-
   const [showEvaluationForm, setShowEvaluationForm] =
     useState(false)
 
@@ -119,10 +116,7 @@ export default function ClassDetail() {
       setStudents((studentsRes.data as Student[]) ?? [])
       setEvaluations((evaluationsRes.data as Evaluation[]) ?? [])
     } catch (error) {
-      console.error(
-        '[ClassDetail] Erreur chargement :',
-        error
-      )
+      console.error('[ClassDetail] Erreur chargement :', error)
 
       setErrorMessage(
         error instanceof Error
@@ -424,6 +418,15 @@ export default function ClassDetail() {
       grades[student.id]?.score !== undefined
   ).length
 
+  const whatsappCount = students.filter(
+    (student) =>
+      student.parent_whatsapp &&
+      student.parent_whatsapp.trim() !== ''
+  ).length
+
+  const missingWhatsappCount =
+    students.length - whatsappCount
+
   return (
     <div className="space-y-5">
       {/* EN-TÊTE DE LA CLASSE */}
@@ -472,10 +475,7 @@ export default function ClassDetail() {
           className="card text-left hover:bg-primary-50 transition"
         >
           <div className="flex items-center gap-2">
-            <Users
-              size={18}
-              className="text-primary-500"
-            />
+            <Users size={18} className="text-primary-500" />
             <span className="text-sm text-primary-500">
               Élèves
             </span>
@@ -738,424 +738,4 @@ export default function ClassDetail() {
                       ...form,
                       type: e.target.value as EvaluationType
                     })
-                  }
-                  disabled={savingEvaluation}
-                >
-                  <option value="interrogation">
-                    Interrogation
-                  </option>
-                  <option value="devoir">
-                    Devoir
-                  </option>
-                  <option value="composition">
-                    Composition
-                  </option>
-                  <option value="examen">
-                    Examen
-                  </option>
-                </select>
-
-                <input
-                  className="input-field"
-                  placeholder="Matière"
-                  value={form.subject}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      subject: e.target.value
-                    })
-                  }
-                  disabled={savingEvaluation}
-                />
-
-                <input
-                  type="date"
-                  className="input-field"
-                  value={form.eval_date}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      eval_date: e.target.value
-                    })
-                  }
-                  disabled={savingEvaluation}
-                />
-
-                <input
-                  type="number"
-                  min="0.5"
-                  step="0.5"
-                  className="input-field"
-                  placeholder="Coefficient"
-                  value={form.coefficient}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      coefficient: Number(e.target.value)
-                    })
-                  }
-                  disabled={savingEvaluation}
-                />
-
-                <input
-                  type="number"
-                  min="1"
-                  className="input-field"
-                  placeholder="Note maximale"
-                  value={form.max_score}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      max_score: Number(e.target.value)
-                    })
-                  }
-                  disabled={savingEvaluation}
-                />
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() =>
-                    void handleCreateEvaluation()
-                  }
-                  className="btn-primary text-sm disabled:opacity-50"
-                  disabled={savingEvaluation}
-                >
-                  {savingEvaluation
-                    ? 'Création…'
-                    : 'Créer l’évaluation'}
-                </button>
-
-                <button
-                  onClick={() =>
-                    setShowEvaluationForm(false)
-                  }
-                  className="btn-secondary text-sm"
-                  disabled={savingEvaluation}
-                >
-                  Annuler
-                </button>
-              </div>
-            </div>
-          )}
-
-          {selectedEvaluation ? (
-            <section className="card">
-              <div className="flex items-start justify-between gap-3 pb-3 mb-2 border-b border-primary-100">
-                <div>
-                  <button
-                    type="button"
-                    onClick={closeEvaluation}
-                    className="flex items-center gap-1 text-xs text-primary-600 mb-2"
-                  >
-                    <ArrowLeft size={14} />
-                    Retour aux évaluations
-                  </button>
-
-                  <h2 className="font-semibold text-primary-800">
-                    {selectedEvaluation.title}
-                  </h2>
-
-                  <p className="text-xs text-primary-400 mt-1">
-                    {selectedEvaluation.subject}
-                    {' · '}
-                    {new Date(
-                      selectedEvaluation.eval_date
-                    ).toLocaleDateString('fr-FR')}
-                    {' · '}
-                    Coefficient{' '}
-                    {selectedEvaluation.coefficient}
-                  </p>
-
-                  <p className="text-xs text-primary-400 mt-1">
-                    {gradedCount}/{students.length} élèves notés
-                  </p>
-                </div>
-
-                <span className="text-xs text-primary-400">
-                  /{selectedEvaluation.max_score}
-                </span>
-              </div>
-
-              {loadingGrades ? (
-                <p className="text-sm text-primary-400 py-4">
-                  Chargement des notes…
-                </p>
-              ) : students.length === 0 ? (
-                <p className="text-sm text-primary-400 py-4">
-                  Aucun élève dans cette classe.
-                </p>
-              ) : (
-                <div className="divide-y divide-primary-100">
-                  {students.map((student, index) => {
-                    const grade = grades[student.id]
-                    const score = grade?.score
-
-                    return (
-                      <div
-                        key={student.id}
-                        className="py-3 flex items-center gap-3"
-                      >
-                        <span className="w-7 text-xs text-primary-400">
-                          {index + 1}
-                        </span>
-
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm text-primary-800 truncate">
-                            {student.last_name}{' '}
-                            {student.first_name}
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            min={0}
-                            max={
-                              selectedEvaluation.max_score
-                            }
-                            step={0.25}
-                            className="input-field w-24 text-center"
-                            defaultValue={
-                              score !== null &&
-                              score !== undefined
-                                ? score
-                                : ''
-                            }
-                            key={`${student.id}-${score ?? 'empty'}`}
-                            onBlur={(e) =>
-                              void saveGrade(
-                                student.id,
-                                e.target.value
-                              )
-                            }
-                            placeholder="—"
-                          />
-
-                          {savingGrade === student.id && (
-                            <Save
-                              size={16}
-                              className="text-primary-500 animate-pulse"
-                            />
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </section>
-          ) : (
-            <section className="card">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h2 className="font-semibold text-primary-800">
-                    Évaluations de {schoolClass.name}
-                  </h2>
-
-                  <p className="text-xs text-primary-400">
-                    Cliquez sur une évaluation pour saisir les notes.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetEvaluationForm()
-                    setShowEvaluationForm(true)
-                    setErrorMessage('')
-                  }}
-                  className="btn-primary flex items-center gap-1 text-sm"
-                >
-                  <Plus size={15} />
-                  Ajouter
-                </button>
-              </div>
-
-              {evaluations.length === 0 ? (
-                <p className="text-sm text-primary-400">
-                  Aucune évaluation pour cette classe.
-                </p>
-              ) : (
-                <div className="divide-y divide-primary-100">
-                  {evaluations.map((evaluation) => (
-                    <button
-                      key={evaluation.id}
-                      type="button"
-                      onClick={() =>
-                        void openEvaluation(evaluation)
-                      }
-                      className="w-full py-3 flex items-center justify-between gap-3 text-left hover:bg-primary-50 rounded-lg px-2"
-                    >
-                      <div>
-                        <p className="font-medium text-primary-800 text-sm">
-                          {evaluation.title}
-                        </p>
-
-                        <p className="text-xs text-primary-400">
-                          {evaluation.subject}
-                          {' · '}
-                          {new Date(
-                            evaluation.eval_date
-                          ).toLocaleDateString('fr-FR')}
-                          {' · '}
-                          Coeff. {evaluation.coefficient}
-                          {' · '}
-                          /{evaluation.max_score}
-                        </p>
-                      </div>
-
-                      <span className="text-xs px-2 py-1 rounded-full bg-primary-50 text-primary-600 capitalize">
-                        {evaluation.type}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </section>
-          )}
-        </>
-      )}
-
-      {/* RÉSULTATS */}
-      {activeSection === 'resultats' && (
-        <section className="card">
-          <div className="flex items-center gap-2 mb-2">
-            <BarChart3
-              size={20}
-              className="text-primary-500"
-            />
-            <h2 className="font-semibold text-primary-800">
-              Résultats de {schoolClass.name}
-            </h2>
-          </div>
-
-          <p className="text-sm text-primary-500">
-            Cet espace regroupera les moyennes, le classement
-            et les statistiques de la classe.
-          </p>
-
-          <p className="text-xs text-primary-400 mt-2">
-            Les données des évaluations existantes sont conservées.
-          </p>
-        </section>
-      )}
-
-      {/* BULLETINS */}
-      {activeSection === 'bulletins' && (
-        <section className="card">
-          <div className="flex items-center gap-2 mb-2">
-            <FileText
-              size={20}
-              className="text-primary-500"
-            />
-            <h2 className="font-semibold text-primary-800">
-              Bulletins de {schoolClass.name}
-            </h2>
-          </div>
-
-          <p className="text-sm text-primary-500">
-            Les bulletins de cette classe seront regroupés ici.
-          </p>
-
-          <p className="text-xs text-primary-400 mt-2">
-            La fonctionnalité existante sera raccordée à cet espace
-            lors de l'étape suivante.
-          </p>
-        </section>
-      )}
-
-      {/* COMMUNICATION */}
-      {activeSection === 'communication' && (
-        <section className="card">
-          <div className="flex items-center gap-2 mb-2">
-            <MessageCircle
-              size={20}
-              className="text-primary-500"
-            />
-            <h2 className="font-semibold text-primary-800">
-              Communication — {schoolClass.name}
-            </h2>
-          </div>
-
-          <p className="text-sm text-primary-500">
-            Cet espace regroupera la communication avec les
-            parents, les élèves et l'administration.
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
-            <div className="border border-primary-100 rounded-lg p-3">
-              <p className="font-medium text-primary-800 text-sm">
-                Parents
-              </p>
-              <p className="text-xs text-primary-400 mt-1">
-                Bulletins, notes, absences et difficultés.
-              </p>
-            </div>
-
-            <div className="border border-primary-100 rounded-lg p-3">
-              <p className="font-medium text-primary-800 text-sm">
-                Élèves
-              </p>
-              <p className="text-xs text-primary-400 mt-1">
-                Informations et communications individuelles.
-              </p>
-            </div>
-
-            <div className="border border-primary-100 rounded-lg p-3">
-              <p className="font-medium text-primary-800 text-sm">
-                Administration
-              </p>
-              <p className="text-xs text-primary-400 mt-1">
-                Informations et échanges liés à la classe.
-              </p>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* PARAMÈTRES */}
-      {activeSection === 'parametres' && (
-        <section className="card">
-          <div className="flex items-center gap-2 mb-2">
-            <Settings
-              size={20}
-              className="text-primary-500"
-            />
-            <h2 className="font-semibold text-primary-800">
-              Paramètres de {schoolClass.name}
-            </h2>
-          </div>
-
-          <p className="text-sm text-primary-500">
-            Les paramètres propres à cette classe seront regroupés
-            ici.
-          </p>
-
-          <div className="mt-4 space-y-2 text-sm text-primary-500">
-            <p>
-              Niveau :{' '}
-              <span className="text-primary-800">
-                {schoolClass.level ?? 'Non précisé'}
-              </span>
-            </p>
-
-            <p>
-              Année scolaire :{' '}
-              <span className="text-primary-800">
-                {schoolClass.school_year}
-              </span>
-            </p>
-
-            <p>
-              Élèves actifs :{' '}
-              <span className="text-primary-800">
-                {students.length}
-              </span>
-            </p>
-          </div>
-        </section>
-      )}
-    </div>
-  )
-}
+ 
