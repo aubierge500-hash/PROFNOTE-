@@ -17,7 +17,8 @@ import {
   X,
   Save,
   Upload,
-  Trash2
+  Trash2,
+  ClipboardPaste
 } from 'lucide-react'
 
 import { supabase } from '@/lib/supabase'
@@ -25,7 +26,10 @@ import { useAuth } from '@/lib/AuthContext'
 import ClassWhatsAppSendButton from '@/components/ClassWhatsAppSendButton'
 import PhotoImportButton from '@/components/PhotoImportButton'
 
-import { insertImportedStudents } from '@/lib/studentImport'
+import {
+  insertImportedStudents,
+  type ImportedRow
+} from '@/lib/studentImport'
 
 import {
   parseStudentsFile,
@@ -138,6 +142,21 @@ export default function ClassDetail() {
     parent_whatsapp: ''
   })
 
+  const [showPasteImport, setShowPasteImport] =
+    useState(false)
+
+  const [pasteText, setPasteText] =
+    useState('')
+
+  const [pasteRows, setPasteRows] =
+    useState<ImportedRow[]>([])
+
+  const [pasteError, setPasteError] =
+    useState('')
+
+  const [pasteImporting, setPasteImporting] =
+    useState(false)
+
   const [importResult, setImportResult] =
     useState<ImportResult | null>(null)
 
@@ -154,8 +173,10 @@ export default function ClassDetail() {
      COMMUNICATION
      ========================= */
 
-  const [selectedCommunicationStudents, setSelectedCommunicationStudents] =
-    useState<string[]>([])
+  const [
+    selectedCommunicationStudents,
+    setSelectedCommunicationStudents
+  ] = useState<string[]>([])
 
   const [communicationMessage, setCommunicationMessage] =
     useState('')
@@ -217,7 +238,9 @@ export default function ClassDetail() {
       }
 
       setSchoolClass(classRes.data as SchoolClass)
-      setStudents((studentsRes.data as Student[]) ?? [])
+      setStudents(
+        (studentsRes.data as Student[]) ?? []
+      )
       setEvaluations(
         (evaluationsRes.data as Evaluation[]) ?? []
       )
@@ -238,7 +261,7 @@ export default function ClassDetail() {
   }
 
   /* =========================
-     AJOUT MANUEL D'UN ÉLÈVE
+     AJOUT MANUEL
      ========================= */
 
   async function handleAddStudent() {
@@ -310,13 +333,149 @@ export default function ClassDetail() {
   }
 
   /* =========================
+     COLLAGE D'UNE LISTE
+     ========================= */
+
+  function parsePastedStudents(
+    text: string
+  ): ImportedRow[] {
+    const lines = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+
+    const rows: ImportedRow[] = []
+
+    for (const line of lines) {
+      let columns: string[] = []
+
+      if (line.includes('\t')) {
+        columns = line.split('\t')
+      } else if (line.includes(';')) {
+        columns = line.split(';')
+      } else if (line.includes(',')) {
+        columns = line.split(',')
+      } else {
+        columns = line.split(/\s+/)
+      }
+
+      columns = columns
+        .map((value) => value.trim())
+        .filter(Boolean)
+
+      if (columns.length < 2) {
+        continue
+      }
+
+      const first = columns[0]
+      const second = columns[1]
+      const third = columns[2] ?? ''
+
+      const possibleGender =
+        third.trim().toUpperCase()
+
+      const gender =
+        possibleGender === 'F' ||
+        possibleGender === 'M'
+          ? possibleGender
+          : ''
+
+      rows.push({
+        Nom: first,
+        Prenom: second,
+        Sexe: gender
+      })
+    }
+
+    return rows
+  }
+
+  function previewPastedStudents() {
+    setPasteError('')
+
+    const rows =
+      parsePastedStudents(pasteText)
+
+    if (rows.length === 0) {
+      setPasteRows([])
+
+      setPasteError(
+        'Aucun élève détecté. Collez au minimum le Nom et le Prénom de chaque élève.'
+      )
+
+      return
+    }
+
+    setPasteRows(rows)
+  }
+
+  async function confirmPastedImport() {
+    if (
+      !user ||
+      !classId ||
+      pasteRows.length === 0
+    ) {
+      return
+    }
+
+    const validRows =
+      pasteRows.filter(
+        (row) =>
+          row.Nom?.trim() &&
+          row.Prenom?.trim()
+      )
+
+    if (validRows.length === 0) {
+      setPasteError(
+        'Aucune ligne complète à importer.'
+      )
+      return
+    }
+
+    setPasteImporting(true)
+    setPasteError('')
+
+    try {
+      await insertImportedStudents(
+        validRows,
+        user.id,
+        classId
+      )
+
+      setPasteText('')
+      setPasteRows([])
+      setShowPasteImport(false)
+
+      await loadClass()
+    } catch (error) {
+      setPasteError(
+        error instanceof Error
+          ? error.message
+          : "L'import des élèves a échoué."
+      )
+    } finally {
+      setPasteImporting(false)
+    }
+  }
+
+  function closePasteImport() {
+    if (pasteImporting) return
+
+    setShowPasteImport(false)
+    setPasteText('')
+    setPasteRows([])
+    setPasteError('')
+  }
+
+  /* =========================
      IMPORT EXCEL / CSV / WORD / PDF
      ========================= */
 
   async function handleFileSelect(
     event: ChangeEvent<HTMLInputElement>
   ) {
-    const file = event.target.files?.[0]
+    const file =
+      event.target.files?.[0]
 
     event.target.value = ''
 
@@ -345,7 +504,11 @@ export default function ClassDetail() {
   }
 
   async function confirmImport() {
-    if (!importResult || !classId || !user) {
+    if (
+      !importResult ||
+      !classId ||
+      !user
+    ) {
       return
     }
 
@@ -360,6 +523,7 @@ export default function ClassDetail() {
       setImportError(
         'Aucune ligne complète à importer : chaque élève doit avoir un Nom et un Prénom.'
       )
+
       return
     }
 
@@ -392,8 +556,17 @@ export default function ClassDetail() {
     }
   }
 
+  const incompleteRows =
+    importResult
+      ? importResult.rows.filter(
+          (row) =>
+            !row.Nom?.trim() ||
+            !row.Prenom?.trim()
+        ).length
+      : 0
+
   /* =========================
-     SUPPRESSION / DÉSACTIVATION
+     SUPPRESSION
      ========================= */
 
   async function handleDeleteStudent(
@@ -461,7 +634,9 @@ export default function ClassDetail() {
           (evaluation) => evaluation.id
         )
 
-      if (evaluationIds.length === 0) {
+      if (
+        evaluationIds.length === 0
+      ) {
         setAllGrades({})
         setLoadingGradebook(false)
         return
@@ -524,8 +699,15 @@ export default function ClassDetail() {
   function initializeDrafts(
     gradeMap: GradeMap
   ) {
-    const scoreMap: Record<string, string> = {}
-    const absenceMap: Record<string, boolean> = {}
+    const scoreMap: Record<
+      string,
+      string
+    > = {}
+
+    const absenceMap: Record<
+      string,
+      boolean
+    > = {}
 
     for (const student of students) {
       const grade =
@@ -564,7 +746,10 @@ export default function ClassDetail() {
           'evaluation_id',
           evaluation.id
         )
-        .eq('teacher_id', user.id)
+        .eq(
+          'teacher_id',
+          user.id
+        )
 
     if (error) {
       setErrorMessage(
@@ -659,7 +844,10 @@ export default function ClassDetail() {
   }
 
   async function saveAllGrades() {
-    if (!user || !selectedEvaluation) {
+    if (
+      !user ||
+      !selectedEvaluation
+    ) {
       return
     }
 
@@ -692,7 +880,10 @@ export default function ClassDetail() {
                   is_absent: true,
                   source: 'manual'
                 })
-                .eq('id', existing.id)
+                .eq(
+                  'id',
+                  existing.id
+                )
                 .eq(
                   'teacher_id',
                   user.id
@@ -715,7 +906,8 @@ export default function ClassDetail() {
                   teacher_id: user.id,
                   evaluation_id:
                     selectedEvaluation.id,
-                  student_id: student.id,
+                  student_id:
+                    student.id,
                   score: null,
                   is_absent: true,
                   source: 'manual'
@@ -790,7 +982,10 @@ export default function ClassDetail() {
                 is_absent: false,
                 source: 'manual'
               })
-              .eq('id', existing.id)
+              .eq(
+                'id',
+                existing.id
+              )
               .eq(
                 'teacher_id',
                 user.id
@@ -813,7 +1008,8 @@ export default function ClassDetail() {
                 teacher_id: user.id,
                 evaluation_id:
                   selectedEvaluation.id,
-                student_id: student.id,
+                student_id:
+                  student.id,
                 score,
                 is_absent: false,
                 source: 'manual'
@@ -887,14 +1083,18 @@ export default function ClassDetail() {
       return
     }
 
-    if (evaluationForm.coefficient <= 0) {
+    if (
+      evaluationForm.coefficient <= 0
+    ) {
       setErrorMessage(
         'Le coefficient doit être supérieur à 0.'
       )
       return
     }
 
-    if (evaluationForm.max_score <= 0) {
+    if (
+      evaluationForm.max_score <= 0
+    ) {
       setErrorMessage(
         'La note maximale doit être supérieure à 0.'
       )
@@ -1022,16 +1222,17 @@ export default function ClassDetail() {
           }
         })
 
-      const ranked = [...results]
-        .filter(
-          (item) =>
-            item.average !== null
-        )
-        .sort(
-          (a, b) =>
-            (b.average ?? 0) -
-            (a.average ?? 0)
-        )
+      const ranked =
+        [...results]
+          .filter(
+            (item) =>
+              item.average !== null
+          )
+          .sort(
+            (a, b) =>
+              (b.average ?? 0) -
+              (a.average ?? 0)
+          )
 
       let lastAverage:
         number | null = null
@@ -1119,8 +1320,7 @@ export default function ClassDetail() {
           (sum, value) =>
             sum + value,
           0
-        ) /
-        values.length
+        ) / values.length
       )
     }, [studentResults])
 
@@ -1165,8 +1365,7 @@ export default function ClassDetail() {
 
         if (!raw) continue
 
-        const score =
-          Number(raw)
+        const score = Number(raw)
 
         if (
           !Number.isNaN(score)
@@ -1320,12 +1519,9 @@ export default function ClassDetail() {
           await supabase
             .from('whatsapp_history')
             .insert({
-              teacher_id:
-                user.id,
-              student_id:
-                student.id,
-              class_id:
-                classId,
+              teacher_id: user.id,
+              student_id: student.id,
+              class_id: classId,
               message_type:
                 'communication_classe',
               message_content:
@@ -1374,7 +1570,7 @@ export default function ClassDetail() {
   }
 
   /* =========================
-     AFFICHAGE CHARGEMENT
+     CHARGEMENT
      ========================= */
 
   if (loading) {
@@ -1469,95 +1665,32 @@ export default function ClassDetail() {
       {/* NAVIGATION */}
 
       <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
-        <button
-          type="button"
-          onClick={() =>
-            selectSection('eleves')
-          }
-          className={`rounded-lg p-3 text-sm flex items-center justify-center gap-2 ${
-            activeSection === 'eleves'
-              ? 'bg-primary-600 text-white'
-              : 'bg-primary-50 text-primary-700'
-          }`}
-        >
-          <Users size={16} />
-          Élèves
-        </button>
-
-        <button
-          type="button"
-          onClick={() =>
-            selectSection('evaluations')
-          }
-          className={`rounded-lg p-3 text-sm flex items-center justify-center gap-2 ${
-            activeSection === 'evaluations'
-              ? 'bg-primary-600 text-white'
-              : 'bg-primary-50 text-primary-700'
-          }`}
-        >
-          <ClipboardList size={16} />
-          Évaluations
-        </button>
-
-        <button
-          type="button"
-          onClick={() =>
-            selectSection('resultats')
-          }
-          className={`rounded-lg p-3 text-sm flex items-center justify-center gap-2 ${
-            activeSection === 'resultats'
-              ? 'bg-primary-600 text-white'
-              : 'bg-primary-50 text-primary-700'
-          }`}
-        >
-          <BarChart3 size={16} />
-          Résultats
-        </button>
-
-        <button
-          type="button"
-          onClick={() =>
-            selectSection('bulletins')
-          }
-          className={`rounded-lg p-3 text-sm flex items-center justify-center gap-2 ${
-            activeSection === 'bulletins'
-              ? 'bg-primary-600 text-white'
-              : 'bg-primary-50 text-primary-700'
-          }`}
-        >
-          <FileText size={16} />
-          Bulletins
-        </button>
-
-        <button
-          type="button"
-          onClick={() =>
-            selectSection('communication')
-          }
-          className={`rounded-lg p-3 text-sm flex items-center justify-center gap-2 ${
-            activeSection === 'communication'
-              ? 'bg-primary-600 text-white'
-              : 'bg-primary-50 text-primary-700'
-          }`}
-        >
-          <MessageCircle size={16} />
-          WhatsApp
-        </button>
-
-        <button
-          type="button"
-          onClick={() =>
-            selectSection('parametres')
-          }
-          className={`rounded-lg p-3 text-sm flex items-center justify-center gap-2 ${
-            activeSection === 'parametres'
-              ? 'bg-primary-600 text-white'
-              : 'bg-primary-50 text-primary-700'
-          }`}
-        >
-          <Settings size={16} />
-          Paramètres
-        </button>
+        {[
+          ['eleves', <Users size={16} />, 'Élèves'],
+          ['evaluations', <ClipboardList size={16} />, 'Évaluations'],
+          ['resultats', <BarChart3 size={16} />, 'Résultats'],
+          ['bulletins', <FileText size={16} />, 'Bulletins'],
+          ['communication', <MessageCircle size={16} />, 'WhatsApp'],
+          ['parametres', <Settings size={16} />, 'Paramètres']
+        ].map(([section, icon, label]) => (
+          <button
+            key={section as string}
+            type="button"
+            onClick={() =>
+              selectSection(
+                section as ClassSection
+              )
+            }
+            className={`rounded-lg p-3 text-sm flex items-center justify-center gap-2 ${
+              activeSection === section
+                ? 'bg-primary-600 text-white'
+                : 'bg-primary-50 text-primary-700'
+            }`}
+          >
+            {icon}
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* =========================
@@ -1573,7 +1706,7 @@ export default function ClassDetail() {
               </h2>
 
               <p className="text-xs text-primary-400">
-                Ajoutez manuellement ou importez une liste.
+                Ajoutez manuellement, collez une liste ou importez un fichier.
               </p>
             </div>
 
@@ -1590,6 +1723,19 @@ export default function ClassDetail() {
               >
                 <Plus size={15} />
                 Ajouter
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPasteError('')
+                  setImportError('')
+                  setShowPasteImport(true)
+                }}
+                className="btn-secondary flex items-center gap-1 text-sm"
+              >
+                <ClipboardPaste size={15} />
+                Coller une liste
               </button>
 
               <label className="btn-secondary flex items-center gap-1 text-sm cursor-pointer">
@@ -1618,6 +1764,8 @@ export default function ClassDetail() {
             </div>
           </div>
 
+          {/* AJOUT MANUEL */}
+
           {showStudentForm && (
             <div className="mb-5 rounded-xl border border-primary-100 bg-primary-50 p-4">
               <div className="flex items-center justify-between mb-3">
@@ -1628,9 +1776,7 @@ export default function ClassDetail() {
                 <button
                   type="button"
                   onClick={() =>
-                    setShowStudentForm(
-                      false
-                    )
+                    setShowStudentForm(false)
                   }
                 >
                   <X size={18} />
@@ -1721,11 +1867,166 @@ export default function ClassDetail() {
             </div>
           )}
 
+          {/* COLLAGE DE LISTE */}
+
+          {showPasteImport && (
+            <div className="mb-5 rounded-xl border border-primary-100 bg-primary-50 p-4">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <h3 className="font-semibold text-primary-800">
+                    Coller une liste d’élèves
+                  </h3>
+
+                  <p className="text-xs text-primary-500 mt-1">
+                    Collez directement depuis Excel, Word, WhatsApp ou une conversation.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={
+                    closePasteImport
+                  }
+                  disabled={
+                    pasteImporting
+                  }
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <textarea
+                className="input-field min-h-40 font-mono text-sm"
+                value={pasteText}
+                onChange={(e) =>
+                  setPasteText(
+                    e.target.value
+                  )
+                }
+                placeholder={
+                  'Exemple :\nAHOTON\tGrâce\tF\nADJOVI\tKévin\tM\nAGBOSSOU\tMariam\tF'
+                }
+              />
+
+              <p className="text-xs text-primary-400 mt-2">
+                Format accepté : Nom → Prénom → Sexe.
+                Le sexe est facultatif.
+              </p>
+
+              {pasteError && (
+                <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {pasteError}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={
+                  previewPastedStudents
+                }
+                className="btn-secondary mt-3"
+              >
+                Vérifier la liste
+              </button>
+
+              {pasteRows.length > 0 && (
+                <div className="mt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-semibold text-primary-800">
+                      {pasteRows.length} élève(s) détecté(s)
+                    </p>
+                  </div>
+
+                  <div className="max-h-64 overflow-auto rounded-lg bg-white border border-primary-100">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-primary-100">
+                          <th className="text-left p-2">
+                            N°
+                          </th>
+                          <th className="text-left p-2">
+                            Nom
+                          </th>
+                          <th className="text-left p-2">
+                            Prénom
+                          </th>
+                          <th className="text-left p-2">
+                            Sexe
+                          </th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {pasteRows
+                          .slice(0, 50)
+                          .map(
+                            (
+                              row,
+                              index
+                            ) => (
+                              <tr
+                                key={`${row.Nom}-${row.Prenom}-${index}`}
+                                className="border-b border-primary-50"
+                              >
+                                <td className="p-2">
+                                  {index + 1}
+                                </td>
+
+                                <td className="p-2">
+                                  {row.Nom ||
+                                    '—'}
+                                </td>
+
+                                <td className="p-2">
+                                  {row.Prenom ||
+                                    '—'}
+                                </td>
+
+                                <td className="p-2">
+                                  {row.Sexe ||
+                                    '—'}
+                                </td>
+                              </tr>
+                            )
+                          )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {pasteRows.length > 50 && (
+                    <p className="text-xs text-primary-400 mt-2">
+                      Aperçu limité aux 50 premières lignes.
+                    </p>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void confirmPastedImport()
+                    }
+                    disabled={
+                      pasteImporting
+                    }
+                    className="btn-primary mt-3"
+                  >
+                    {pasteImporting
+                      ? 'Importation…'
+                      : `Importer ${pasteRows.length} élèves`}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ERREUR IMPORT */}
+
           {importError && (
             <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               {importError}
             </div>
           )}
+
+          {/* APERÇU FICHIER */}
 
           {importResult && (
             <div className="mb-5 rounded-xl border border-primary-100 bg-primary-50 p-4">
@@ -1736,11 +2037,16 @@ export default function ClassDetail() {
                   </h3>
 
                   <p className="text-xs text-primary-500">
-                    {
-                      importResult.rows.length
-                    }{' '}
+                    {importResult.rows.length}{' '}
                     ligne(s) détectée(s).
                   </p>
+
+                  {importResult.format && (
+                    <p className="text-xs text-primary-500 mt-1">
+                      Format :{' '}
+                      {importResult.format}
+                    </p>
+                  )}
                 </div>
 
                 <button
@@ -1753,10 +2059,45 @@ export default function ClassDetail() {
                 </button>
               </div>
 
+              {importResult.headers &&
+                importResult.headers.length >
+                  0 && (
+                  <p className="text-xs text-primary-500 mb-2">
+                    Colonnes reconnues :{' '}
+                    {importResult.headers.join(
+                      ', '
+                    )}
+                  </p>
+                )}
+
+              {incompleteRows > 0 && (
+                <p className="text-xs text-orange-600 mb-2">
+                  {incompleteRows} ligne(s) incomplète(s)
+                  seront ignorée(s).
+                </p>
+              )}
+
+              {importResult.warnings &&
+                importResult.warnings.length >
+                  0 && (
+                  <div className="mb-3 rounded-lg border border-orange-200 bg-orange-50 p-3 text-xs text-orange-700">
+                    {importResult.warnings.map(
+                      (warning, index) => (
+                        <p key={index}>
+                          {warning}
+                        </p>
+                      )
+                    )}
+                  </div>
+                )}
+
               <div className="max-h-64 overflow-auto rounded-lg bg-white border border-primary-100">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-primary-100">
+                      <th className="text-left p-2">
+                        N°
+                      </th>
                       <th className="text-left p-2">
                         Nom
                       </th>
@@ -1765,6 +2106,9 @@ export default function ClassDetail() {
                       </th>
                       <th className="text-left p-2">
                         Sexe
+                      </th>
+                      <th className="text-left p-2">
+                        WhatsApp
                       </th>
                     </tr>
                   </thead>
@@ -1778,11 +2122,13 @@ export default function ClassDetail() {
                           index
                         ) => (
                           <tr
-                            key={
-                              `${row.Nom}-${row.Prenom}-${index}`
-                            }
+                            key={`${row.Nom}-${row.Prenom}-${index}`}
                             className="border-b border-primary-50"
                           >
+                            <td className="p-2">
+                              {index + 1}
+                            </td>
+
                             <td className="p-2">
                               {row.Nom ||
                                 '—'}
@@ -1797,12 +2143,24 @@ export default function ClassDetail() {
                               {row.Sexe ||
                                 '—'}
                             </td>
+
+                            <td className="p-2">
+                              {row.WhatsApp ||
+                                '—'}
+                            </td>
                           </tr>
                         )
                       )}
                   </tbody>
                 </table>
               </div>
+
+              {importResult.rows.length >
+                50 && (
+                <p className="text-xs text-primary-400 mt-2">
+                  Aperçu limité aux 50 premières lignes.
+                </p>
+              )}
 
               <button
                 type="button"
@@ -1814,10 +2172,12 @@ export default function ClassDetail() {
               >
                 {importing
                   ? 'Importation…'
-                  : 'Enregistrer les élèves'}
+                  : `Confirmer l'import dans « ${schoolClass.name} »`}
               </button>
             </div>
           )}
+
+          {/* LISTE */}
 
           {students.length === 0 ? (
             <div className="rounded-lg bg-primary-50 p-5 text-center">
@@ -1831,7 +2191,7 @@ export default function ClassDetail() {
               </p>
 
               <p className="text-xs text-primary-400 mt-1">
-                Utilisez « Ajouter » ou « Importer ».
+                Utilisez « Ajouter », « Coller une liste » ou « Importer ».
               </p>
             </div>
           ) : (
@@ -1842,15 +2202,19 @@ export default function ClassDetail() {
                     <th className="text-left py-3 px-2">
                       N°
                     </th>
+
                     <th className="text-left py-3 px-2">
                       Élève
                     </th>
+
                     <th className="text-left py-3 px-2">
                       Sexe
                     </th>
+
                     <th className="text-left py-3 px-2">
                       WhatsApp
                     </th>
+
                     <th className="text-right py-3 px-2">
                       Action
                     </th>
@@ -1909,6 +2273,7 @@ export default function ClassDetail() {
                             <Trash2
                               size={14}
                             />
+
                             {deletingStudent ===
                             student.id
                               ? '…'
@@ -2015,12 +2380,15 @@ export default function ClassDetail() {
                       <option value="interrogation">
                         Interrogation
                       </option>
+
                       <option value="devoir">
                         Devoir
                       </option>
+
                       <option value="composition">
                         Composition
                       </option>
+
                       <option value="examen">
                         Examen
                       </option>
@@ -2202,6 +2570,7 @@ export default function ClassDetail() {
                       <p className="text-xs text-primary-400">
                         Notés
                       </p>
+
                       <p className="font-semibold text-primary-800">
                         {
                           gradebookStats.graded
@@ -2217,6 +2586,7 @@ export default function ClassDetail() {
                       <p className="text-xs text-primary-400">
                         Absents
                       </p>
+
                       <p className="font-semibold text-primary-800">
                         {
                           gradebookStats.absent
@@ -2228,6 +2598,7 @@ export default function ClassDetail() {
                       <p className="text-xs text-primary-400">
                         À saisir
                       </p>
+
                       <p className="font-semibold text-primary-800">
                         {
                           gradebookStats.missing
@@ -2239,6 +2610,7 @@ export default function ClassDetail() {
                       <p className="text-xs text-primary-400">
                         Moyenne
                       </p>
+
                       <p className="font-semibold text-primary-800">
                         {gradebookStats.average ===
                         null
@@ -2253,6 +2625,7 @@ export default function ClassDetail() {
                       <p className="text-xs text-primary-400">
                         Meilleure
                       </p>
+
                       <p className="font-semibold text-primary-800">
                         {gradebookStats.best ===
                         null
@@ -2274,6 +2647,7 @@ export default function ClassDetail() {
                       className="btn-primary flex items-center gap-2 text-sm"
                     >
                       <Save size={16} />
+
                       {savingAllGrades
                         ? 'Enregistrement…'
                         : 'Enregistrer tout'}
@@ -2293,15 +2667,19 @@ export default function ClassDetail() {
                           <th className="py-2 px-2">
                             N°
                           </th>
+
                           <th className="py-2 px-2">
                             Élève
                           </th>
+
                           <th className="py-2 px-2 text-center">
                             Note
                           </th>
+
                           <th className="py-2 px-2 text-center">
                             Absence
                           </th>
+
                           <th className="py-2 px-2 text-center">
                             État
                           </th>
@@ -2379,6 +2757,7 @@ export default function ClassDetail() {
                                         'Enter'
                                       ) {
                                         e.preventDefault()
+
                                         focusNextGradeInput(
                                           index
                                         )
@@ -2785,6 +3164,7 @@ export default function ClassDetail() {
                 className="btn-primary mt-3 flex items-center gap-2"
               >
                 <MessageCircle size={16} />
+
                 {sendingCommunication
                   ? 'Ouverture…'
                   : `Ouvrir WhatsApp (${selectedWhatsappStudents.length})`}
