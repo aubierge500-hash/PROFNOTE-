@@ -972,7 +972,7 @@ export default function ClassDetail() {
           return {
             student,
             average,
-            rank: null,
+            rank: null as number | null,
             graded,
             missing,
             absent
