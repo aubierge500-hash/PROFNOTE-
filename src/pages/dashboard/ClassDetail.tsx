@@ -34,19 +34,39 @@ type ClassSection =
   | 'communication'
   | 'parametres'
 
+type GradeMap = Record<string, Grade>
+
+type StudentResult = {
+  student: Student
+  average: number | null
+  rank: number | null
+  graded: number
+  missing: number
+  absent: number
+}
+
 export default function ClassDetail() {
   const { classId } = useParams<{ classId: string }>()
   const navigate = useNavigate()
   const { user, profile } = useAuth()
 
-  const [schoolClass, setSchoolClass] = useState<SchoolClass | null>(null)
-  const [students, setStudents] = useState<Student[]>([])
-  const [evaluations, setEvaluations] = useState<Evaluation[]>([])
+  const [schoolClass, setSchoolClass] =
+    useState<SchoolClass | null>(null)
+
+  const [students, setStudents] =
+    useState<Student[]>([])
+
+  const [evaluations, setEvaluations] =
+    useState<Evaluation[]>([])
+
   const [selectedEvaluation, setSelectedEvaluation] =
     useState<Evaluation | null>(null)
 
   const [grades, setGrades] =
-    useState<Record<string, Grade>>({})
+    useState<GradeMap>({})
+
+  const [allGrades, setAllGrades] =
+    useState<GradeMap>({})
 
   const [draftScores, setDraftScores] =
     useState<Record<string, string>>({})
@@ -57,12 +77,23 @@ export default function ClassDetail() {
   const [activeSection, setActiveSection] =
     useState<ClassSection>('eleves')
 
-  const [loading, setLoading] = useState(true)
-  const [loadingGrades, setLoadingGrades] = useState(false)
-  const [savingAllGrades, setSavingAllGrades] = useState(false)
+  const [loading, setLoading] =
+    useState(true)
 
-  const [errorMessage, setErrorMessage] = useState('')
-  const [gradesSavedMessage, setGradesSavedMessage] = useState('')
+  const [loadingGrades, setLoadingGrades] =
+    useState(false)
+
+  const [loadingGradebook, setLoadingGradebook] =
+    useState(false)
+
+  const [savingAllGrades, setSavingAllGrades] =
+    useState(false)
+
+  const [errorMessage, setErrorMessage] =
+    useState('')
+
+  const [gradesSavedMessage, setGradesSavedMessage] =
+    useState('')
 
   const [showEvaluationForm, setShowEvaluationForm] =
     useState(false)
@@ -74,7 +105,9 @@ export default function ClassDetail() {
     title: '',
     type: 'interrogation' as EvaluationType,
     subject: '',
-    eval_date: new Date().toISOString().slice(0, 10),
+    eval_date: new Date()
+      .toISOString()
+      .slice(0, 10),
     coefficient: 1,
     max_score: 20
   })
@@ -104,39 +137,54 @@ export default function ClassDetail() {
     setErrorMessage('')
 
     try {
-      const [classRes, studentsRes, evaluationsRes] =
-        await Promise.all([
-          supabase
-            .from('classes')
-            .select('*')
-            .eq('id', classId)
-            .eq('teacher_id', user.id)
-            .single(),
+      const [
+        classRes,
+        studentsRes,
+        evaluationsRes
+      ] = await Promise.all([
+        supabase
+          .from('classes')
+          .select('*')
+          .eq('id', classId)
+          .eq('teacher_id', user.id)
+          .single(),
 
-          supabase
-            .from('students')
-            .select('*')
-            .eq('class_id', classId)
-            .eq('teacher_id', user.id)
-            .eq('is_active', true)
-            .order('last_name')
-            .order('first_name'),
+        supabase
+          .from('students')
+          .select('*')
+          .eq('class_id', classId)
+          .eq('teacher_id', user.id)
+          .eq('is_active', true)
+          .order('last_name')
+          .order('first_name'),
 
-          supabase
-            .from('evaluations')
-            .select('*')
-            .eq('class_id', classId)
-            .eq('teacher_id', user.id)
-            .order('eval_date', { ascending: false })
-        ])
+        supabase
+          .from('evaluations')
+          .select('*')
+          .eq('class_id', classId)
+          .eq('teacher_id', user.id)
+          .order('eval_date', {
+            ascending: false
+          })
+      ])
 
       if (classRes.error) throw classRes.error
       if (studentsRes.error) throw studentsRes.error
-      if (evaluationsRes.error) throw evaluationsRes.error
+      if (evaluationsRes.error) {
+        throw evaluationsRes.error
+      }
 
-      setSchoolClass(classRes.data as SchoolClass)
-      setStudents((studentsRes.data as Student[]) ?? [])
-      setEvaluations((evaluationsRes.data as Evaluation[]) ?? [])
+      setSchoolClass(
+        classRes.data as SchoolClass
+      )
+
+      setStudents(
+        (studentsRes.data as Student[]) ?? []
+      )
+
+      setEvaluations(
+        (evaluationsRes.data as Evaluation[]) ?? []
+      )
     } catch (error) {
       console.error(
         '[ClassDetail] Erreur chargement :',
@@ -153,8 +201,77 @@ export default function ClassDetail() {
     }
   }
 
+  async function loadAllGrades() {
+    if (!user || !classId) return
+
+    setLoadingGradebook(true)
+    setErrorMessage('')
+
+    try {
+      const evaluationIds =
+        evaluations.map(
+          (evaluation) => evaluation.id
+        )
+
+      if (evaluationIds.length === 0) {
+        setAllGrades({})
+        setLoadingGradebook(false)
+        return
+      }
+
+      const { data, error } =
+        await supabase
+          .from('grades')
+          .select('*')
+          .eq('teacher_id', user.id)
+          .in(
+            'evaluation_id',
+            evaluationIds
+          )
+
+      if (error) throw error
+
+      const map: GradeMap = {}
+
+      for (const grade of (data as Grade[]) ?? []) {
+        map[
+          `${grade.evaluation_id}:${grade.student_id}`
+        ] = grade
+      }
+
+      setAllGrades(map)
+    } catch (error) {
+      console.error(
+        '[ClassDetail] Erreur carnet :',
+        error
+      )
+
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'Impossible de charger le carnet de notes.'
+      )
+    } finally {
+      setLoadingGradebook(false)
+    }
+  }
+
+  useEffect(() => {
+    if (
+      activeSection === 'resultats' &&
+      user &&
+      evaluations.length > 0
+    ) {
+      void loadAllGrades()
+    }
+  }, [
+    activeSection,
+    evaluations,
+    user
+  ])
+
   function initializeDrafts(
-    gradeMap: Record<string, Grade>
+    gradeMap: GradeMap
   ) {
     const scoreMap: Record<string, string> = {}
     const absenceMap: Record<string, boolean> = {}
@@ -187,18 +304,17 @@ export default function ClassDetail() {
     setErrorMessage('')
     setGradesSavedMessage('')
 
-    const { data, error } = await supabase
-      .from('grades')
-      .select('*')
-      .eq('evaluation_id', evaluation.id)
-      .eq('teacher_id', user.id)
+    const { data, error } =
+      await supabase
+        .from('grades')
+        .select('*')
+        .eq(
+          'evaluation_id',
+          evaluation.id
+        )
+        .eq('teacher_id', user.id)
 
     if (error) {
-      console.error(
-        '[ClassDetail] Erreur chargement notes :',
-        error
-      )
-
       setErrorMessage(
         `Impossible de charger les notes : ${error.message}`
       )
@@ -210,7 +326,7 @@ export default function ClassDetail() {
       return
     }
 
-    const gradeMap: Record<string, Grade> = {}
+    const gradeMap: GradeMap = {}
 
     for (const grade of (data as Grade[]) ?? []) {
       gradeMap[grade.student_id] = grade
@@ -243,12 +359,15 @@ export default function ClassDetail() {
     }))
   }
 
-  function toggleAbsence(studentId: string) {
+  function toggleAbsence(
+    studentId: string
+  ) {
     setGradesSavedMessage('')
     setErrorMessage('')
 
     setDraftAbsences((current) => {
-      const nextAbsent = !(current[studentId] ?? false)
+      const nextAbsent =
+        !(current[studentId] ?? false)
 
       if (nextAbsent) {
         setDraftScores((scores) => ({
@@ -273,17 +392,19 @@ export default function ClassDetail() {
       )
     )
 
-    const current = inputs[studentIndex]
-    const next = inputs[studentIndex + 1]
+    const next =
+      inputs[studentIndex + 1]
 
-    if (current && next) {
+    if (next) {
       next.focus()
       next.select()
     }
   }
 
   async function saveAllGrades() {
-    if (!user || !selectedEvaluation) return
+    if (!user || !selectedEvaluation) {
+      return
+    }
 
     setSavingAllGrades(true)
     setErrorMessage('')
@@ -291,14 +412,18 @@ export default function ClassDetail() {
 
     try {
       for (const student of students) {
-        const value = (
-          draftScores[student.id] ?? ''
-        ).trim()
+        const value =
+          (
+            draftScores[student.id] ??
+            ''
+          ).trim()
 
         const isAbsent =
-          draftAbsences[student.id] ?? false
+          draftAbsences[student.id] ??
+          false
 
-        const existing = grades[student.id]
+        const existing =
+          grades[student.id]
 
         if (isAbsent) {
           if (existing) {
@@ -311,7 +436,10 @@ export default function ClassDetail() {
                   source: 'manual'
                 })
                 .eq('id', existing.id)
-                .eq('teacher_id', user.id)
+                .eq(
+                  'teacher_id',
+                  user.id
+                )
                 .select()
                 .single()
 
@@ -319,7 +447,8 @@ export default function ClassDetail() {
 
             setGrades((current) => ({
               ...current,
-              [student.id]: data as Grade
+              [student.id]:
+                data as Grade
             }))
           } else {
             const { data, error } =
@@ -341,7 +470,8 @@ export default function ClassDetail() {
 
             setGrades((current) => ({
               ...current,
-              [student.id]: data as Grade
+              [student.id]:
+                data as Grade
             }))
           }
 
@@ -355,14 +485,21 @@ export default function ClassDetail() {
                 .from('grades')
                 .delete()
                 .eq('id', existing.id)
-                .eq('teacher_id', user.id)
+                .eq(
+                  'teacher_id',
+                  user.id
+                )
 
             if (error) throw error
 
             setGrades((current) => {
-              const updated = { ...current }
+              const updated = {
+                ...current
+              }
 
-              delete updated[student.id]
+              delete updated[
+                student.id
+              ]
 
               return updated
             })
@@ -376,7 +513,8 @@ export default function ClassDetail() {
         if (
           Number.isNaN(score) ||
           score < 0 ||
-          score > selectedEvaluation.max_score
+          score >
+            selectedEvaluation.max_score
         ) {
           throw new Error(
             `Note invalide pour ${student.last_name} ${student.first_name}.`
@@ -393,7 +531,10 @@ export default function ClassDetail() {
                 source: 'manual'
               })
               .eq('id', existing.id)
-              .eq('teacher_id', user.id)
+              .eq(
+                'teacher_id',
+                user.id
+              )
               .select()
               .single()
 
@@ -401,7 +542,8 @@ export default function ClassDetail() {
 
           setGrades((current) => ({
             ...current,
-            [student.id]: data as Grade
+            [student.id]:
+              data as Grade
           }))
         } else {
           const { data, error } =
@@ -423,7 +565,8 @@ export default function ClassDetail() {
 
           setGrades((current) => ({
             ...current,
-            [student.id]: data as Grade
+            [student.id]:
+              data as Grade
           }))
         }
       }
@@ -431,6 +574,8 @@ export default function ClassDetail() {
       setGradesSavedMessage(
         `✓ Notes enregistrées : ${students.length} élèves`
       )
+
+      void loadAllGrades()
     } catch (error) {
       console.error(
         '[ClassDetail] Erreur sauvegarde notes :',
@@ -505,7 +650,8 @@ export default function ClassDetail() {
             type: form.type,
             subject: form.subject.trim(),
             eval_date: form.eval_date,
-            coefficient: form.coefficient,
+            coefficient:
+              form.coefficient,
             max_score: form.max_score
           })
           .select()
@@ -524,11 +670,6 @@ export default function ClassDetail() {
         )
       }
     } catch (error) {
-      console.error(
-        '[ClassDetail] Erreur création évaluation :',
-        error
-      )
-
       setErrorMessage(
         error instanceof Error
           ? error.message
@@ -561,15 +702,16 @@ export default function ClassDetail() {
       (student) =>
         Boolean(
           student.parent_whatsapp &&
-            student.parent_whatsapp.trim() !== ''
+            student.parent_whatsapp.trim()
         )
     )
 
   const selectedWhatsappStudents =
-    whatsappStudents.filter((student) =>
-      selectedCommunicationStudents.includes(
-        student.id
-      )
+    whatsappStudents.filter(
+      (student) =>
+        selectedCommunicationStudents.includes(
+          student.id
+        )
     )
 
   function toggleCommunicationStudent(
@@ -581,15 +723,17 @@ export default function ClassDetail() {
       (current) =>
         current.includes(studentId)
           ? current.filter(
-              (id) => id !== studentId
+              (id) =>
+                id !== studentId
             )
-          : [...current, studentId]
+          : [
+              ...current,
+              studentId
+            ]
     )
   }
 
   function selectAllCommunicationStudents() {
-    setCommunicationResult('')
-
     setSelectedCommunicationStudents(
       whatsappStudents.map(
         (student) => student.id
@@ -598,8 +742,9 @@ export default function ClassDetail() {
   }
 
   function clearCommunicationSelection() {
-    setCommunicationResult('')
-    setSelectedCommunicationStudents([])
+    setSelectedCommunicationStudents(
+      []
+    )
   }
 
   function openWhatsAppCommunication() {
@@ -624,7 +769,6 @@ export default function ClassDetail() {
     }
 
     setSendingCommunication(true)
-    setCommunicationResult('')
 
     let openedCount = 0
 
@@ -640,14 +784,10 @@ export default function ClassDetail() {
         `Bonjour, message concernant ${student.first_name} ${student.last_name} ` +
         `(classe ${schoolClass?.name ?? ''}).\n\n${message}`
 
-      const whatsappUrl =
-        `https://wa.me/${number}?text=` +
-        encodeURIComponent(
-          personalizedMessage
-        )
-
       window.open(
-        whatsappUrl,
+        `https://wa.me/${number}?text=${encodeURIComponent(
+          personalizedMessage
+        )}`,
         '_blank'
       )
 
@@ -667,16 +807,8 @@ export default function ClassDetail() {
     if (user && classId) {
       void Promise.all(
         selectedWhatsappStudents.map(
-          (student) => {
-            const number =
-              student.parent_whatsapp
-                ?.trim() ?? ''
-
-            const personalizedMessage =
-              `Bonjour, message concernant ${student.first_name} ${student.last_name} ` +
-              `(classe ${schoolClass?.name ?? ''}).\n\n${message}`
-
-            return supabase
+          (student) =>
+            supabase
               .from('whatsapp_history')
               .insert({
                 teacher_id: user.id,
@@ -685,81 +817,264 @@ export default function ClassDetail() {
                 message_type:
                   'communication_classe',
                 message_content:
-                  personalizedMessage,
-                parent_whatsapp: number,
+                  personalizedMessageForStudent(
+                    student,
+                    message
+                  ),
+                parent_whatsapp:
+                  student.parent_whatsapp,
                 status: 'sent',
                 share_method:
                   'wa_link_fallback'
               })
-          }
         )
       )
     }
   }
 
-  const gradebookStats = useMemo(() => {
-    if (!selectedEvaluation) {
+  function personalizedMessageForStudent(
+    student: Student,
+    message: string
+  ) {
+    return (
+      `Bonjour, message concernant ${student.first_name} ${student.last_name} ` +
+      `(classe ${schoolClass?.name ?? ''}).\n\n${message}`
+    )
+  }
+
+  const gradebookStats =
+    useMemo(() => {
+      if (!selectedEvaluation) {
+        return {
+          graded: 0,
+          absent: 0,
+          missing: students.length,
+          average: null as number | null,
+          best: null as number | null,
+          lowest: null as number | null
+        }
+      }
+
+      const scores: number[] = []
+      let absent = 0
+
+      for (const student of students) {
+        if (
+          draftAbsences[
+            student.id
+          ]
+        ) {
+          absent++
+          continue
+        }
+
+        const raw =
+          (
+            draftScores[
+              student.id
+            ] ?? ''
+          ).trim()
+
+        if (!raw) continue
+
+        const score = Number(raw)
+
+        if (!Number.isNaN(score)) {
+          scores.push(score)
+        }
+      }
+
       return {
-        graded: 0,
-        absent: 0,
-        missing: students.length,
-        average: null as number | null,
-        best: null as number | null,
-        lowest: null as number | null
+        graded: scores.length,
+        absent,
+        missing: Math.max(
+          0,
+          students.length -
+            scores.length -
+            absent
+        ),
+        average: scores.length
+          ? scores.reduce(
+              (sum, score) =>
+                sum + score,
+              0
+            ) / scores.length
+          : null,
+        best: scores.length
+          ? Math.max(...scores)
+          : null,
+        lowest: scores.length
+          ? Math.min(...scores)
+          : null
       }
-    }
+    }, [
+      draftScores,
+      draftAbsences,
+      selectedEvaluation,
+      students
+    ])
 
-    const scores: number[] = []
-    let absent = 0
+  const studentResults =
+    useMemo<StudentResult[]>(() => {
+      const results =
+        students.map((student) => {
+          let weightedTotal = 0
+          let coefficientTotal = 0
+          let graded = 0
+          let missing = 0
+          let absent = 0
 
-    for (const student of students) {
-      if (draftAbsences[student.id]) {
-        absent++
-        continue
+          for (const evaluation of evaluations) {
+            const grade =
+              allGrades[
+                `${evaluation.id}:${student.id}`
+              ]
+
+            if (!grade) {
+              missing++
+              continue
+            }
+
+            if (grade.is_absent) {
+              absent++
+              continue
+            }
+
+            if (
+              grade.score === null ||
+              grade.score === undefined
+            ) {
+              missing++
+              continue
+            }
+
+            const normalized =
+              grade.score /
+              evaluation.max_score
+
+            weightedTotal +=
+              normalized *
+              20 *
+              evaluation.coefficient
+
+            coefficientTotal +=
+              evaluation.coefficient
+
+            graded++
+          }
+
+          const average =
+            coefficientTotal > 0
+              ? weightedTotal /
+                coefficientTotal
+              : null
+
+          return {
+            student,
+            average,
+            rank: null,
+            graded,
+            missing,
+            absent
+          }
+        })
+
+      const ranked = [
+        ...results
+      ]
+        .filter(
+          (result) =>
+            result.average !== null
+        )
+        .sort(
+          (a, b) =>
+            (b.average ?? 0) -
+            (a.average ?? 0)
+        )
+
+      let lastAverage: number | null =
+        null
+      let lastRank = 0
+
+      for (
+        let index = 0;
+        index < ranked.length;
+        index++
+      ) {
+        const current =
+          ranked[index]
+
+        if (
+          lastAverage === null ||
+          Math.abs(
+            (current.average ?? 0) -
+              lastAverage
+          ) > 0.0001
+        ) {
+          lastRank = index + 1
+          lastAverage =
+            current.average
+        }
+
+        current.rank = lastRank
       }
 
-      const raw = (
-        draftScores[student.id] ?? ''
-      ).trim()
+      return results
+    }, [
+      students,
+      evaluations,
+      allGrades
+    ])
 
-      if (raw === '') continue
+  const classAverage =
+    useMemo(() => {
+      const values =
+        studentResults
+          .map(
+            (result) =>
+              result.average
+          )
+          .filter(
+            (
+              value
+            ): value is number =>
+              value !== null
+          )
 
-      const score = Number(raw)
+      if (!values.length) return null
 
-      if (!Number.isNaN(score)) {
-        scores.push(score)
-      }
-    }
+      return (
+        values.reduce(
+          (sum, value) =>
+            sum + value,
+          0
+        ) / values.length
+      )
+    }, [studentResults])
 
-    return {
-      graded: scores.length,
-      absent,
-      missing: Math.max(
-        0,
-        students.length -
-          scores.length -
-          absent
-      ),
-      average: scores.length
-        ? scores.reduce(
-            (sum, score) =>
-              sum + score,
-            0
-          ) / scores.length
-        : null,
-      best: scores.length
-        ? Math.max(...scores)
-        : null,
-      lowest: scores.length
-        ? Math.min(...scores)
-        : null
-    }
-  }, [
-    draftScores,
-    draftAbsences,
-    selectedEvaluation,
-    students
-  ])
+  const rankedStudents =
+    useMemo(() => {
+      return [
+        ...studentResults
+      ].sort((a, b) => {
+        if (
+          a.average === null &&
+          b.average === null
+        ) {
+          return a.student.last_name.localeCompare(
+            b.student.last_name
+          )
+        }
+
+        if (a.average === null) return 1
+        if (b.average === null) return -1
+
+        return (
+          (b.average ?? 0) -
+          (a.average ?? 0)
+        )
+      })
+    }, [studentResults])
 
   if (loading) {
     return (
@@ -806,7 +1121,8 @@ export default function ClassDetail() {
     whatsappStudents.length
 
   const missingWhatsappCount =
-    students.length - whatsappCount
+    students.length -
+    whatsappCount
 
   return (
     <div className="space-y-5">
@@ -902,7 +1218,9 @@ export default function ClassDetail() {
         <button
           type="button"
           onClick={() =>
-            selectSection('resultats')
+            selectSection(
+              'resultats'
+            )
           }
           className="card text-left hover:bg-primary-50 transition"
         >
@@ -912,7 +1230,7 @@ export default function ClassDetail() {
               className="text-primary-500"
             />
             <span className="text-sm text-primary-500">
-              Résultats
+              Carnet de notes
             </span>
           </div>
 
@@ -956,7 +1274,7 @@ export default function ClassDetail() {
             [
               'resultats',
               BarChart3,
-              'Résultats'
+              'Carnet de notes'
             ],
             [
               'bulletins',
@@ -1022,25 +1340,11 @@ export default function ClassDetail() {
       {activeSection ===
         'eleves' && (
         <section className="card">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h2 className="font-semibold text-primary-800">
-                Élèves de{' '}
-                {schoolClass.name}
-              </h2>
+          <h2 className="font-semibold text-primary-800 mb-3">
+            Élèves de {schoolClass.name}
+          </h2>
 
-              <p className="text-xs text-primary-400">
-                {students.length} élève
-                {students.length >
-                1
-                  ? 's'
-                  : ''}
-              </p>
-            </div>
-          </div>
-
-          {students.length ===
-          0 ? (
+          {students.length === 0 ? (
             <p className="text-sm text-primary-400">
               Aucun élève dans cette
               classe.
@@ -1105,8 +1409,7 @@ export default function ClassDetail() {
             <div className="card space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold text-primary-800">
-                  Nouvelle
-                  évaluation
+                  Nouvelle évaluation
                 </h2>
 
                 <button
@@ -1117,9 +1420,6 @@ export default function ClassDetail() {
                     )
                   }
                   className="p-1 text-primary-500 hover:bg-primary-50 rounded"
-                  disabled={
-                    savingEvaluation
-                  }
                 >
                   <X size={18} />
                 </button>
@@ -1135,12 +1435,8 @@ export default function ClassDetail() {
                   setForm({
                     ...form,
                     title:
-                      e.target
-                        .value
+                      e.target.value
                   })
-                }
-                disabled={
-                  savingEvaluation
                 }
               />
 
@@ -1153,26 +1449,21 @@ export default function ClassDetail() {
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      type: e.target
-                        .value as EvaluationType
+                      type:
+                        e.target
+                          .value as EvaluationType
                     })
-                  }
-                  disabled={
-                    savingEvaluation
                   }
                 >
                   <option value="interrogation">
                     Interrogation
                   </option>
-
                   <option value="devoir">
                     Devoir
                   </option>
-
                   <option value="composition">
                     Composition
                   </option>
-
                   <option value="examen">
                     Examen
                   </option>
@@ -1188,12 +1479,8 @@ export default function ClassDetail() {
                     setForm({
                       ...form,
                       subject:
-                        e.target
-                          .value
+                        e.target.value
                     })
-                  }
-                  disabled={
-                    savingEvaluation
                   }
                 />
 
@@ -1207,12 +1494,8 @@ export default function ClassDetail() {
                     setForm({
                       ...form,
                       eval_date:
-                        e.target
-                          .value
+                        e.target.value
                     })
-                  }
-                  disabled={
-                    savingEvaluation
                   }
                 />
 
@@ -1230,13 +1513,9 @@ export default function ClassDetail() {
                       ...form,
                       coefficient:
                         Number(
-                          e.target
-                            .value
+                          e.target.value
                         )
                     })
-                  }
-                  disabled={
-                    savingEvaluation
                   }
                 />
 
@@ -1253,198 +1532,144 @@ export default function ClassDetail() {
                       ...form,
                       max_score:
                         Number(
-                          e.target
-                            .value
+                          e.target.value
                         )
                     })
-                  }
-                  disabled={
-                    savingEvaluation
                   }
                 />
               </div>
 
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    void handleCreateEvaluation()
-                  }
-                  className="btn-primary text-sm disabled:opacity-50"
-                  disabled={
-                    savingEvaluation
-                  }
-                >
-                  {savingEvaluation
-                    ? 'Création…'
-                    : 'Créer l’évaluation'}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShowEvaluationForm(
-                      false
-                    )
-                  }
-                  className="btn-secondary text-sm"
-                  disabled={
-                    savingEvaluation
-                  }
-                >
-                  Annuler
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  void handleCreateEvaluation()
+                }
+                disabled={
+                  savingEvaluation
+                }
+                className="btn-primary text-sm"
+              >
+                {savingEvaluation
+                  ? 'Création…'
+                  : 'Créer l’évaluation'}
+              </button>
             </div>
           )}
 
           {selectedEvaluation ? (
             <section className="card">
-              <div className="flex flex-col gap-3 pb-4 mb-3 border-b border-primary-100">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <button
-                      type="button"
-                      onClick={
-                        closeEvaluation
-                      }
-                      className="flex items-center gap-1 text-xs text-primary-600 mb-2"
-                    >
-                      <ArrowLeft
-                        size={14}
-                      />
-                      Retour aux
-                      évaluations
-                    </button>
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <div>
+                  <button
+                    type="button"
+                    onClick={
+                      closeEvaluation
+                    }
+                    className="flex items-center gap-1 text-xs text-primary-600 mb-2"
+                  >
+                    <ArrowLeft
+                      size={14}
+                    />
+                    Retour
+                  </button>
 
-                    <h2 className="font-semibold text-primary-800">
-                      {
-                        selectedEvaluation.title
-                      }
-                    </h2>
+                  <h2 className="font-semibold text-primary-800">
+                    {
+                      selectedEvaluation.title
+                    }
+                  </h2>
 
-                    <p className="text-xs text-primary-400 mt-1">
-                      {
-                        selectedEvaluation.subject
-                      }{' '}
-                      ·{' '}
-                      {new Date(
-                        selectedEvaluation.eval_date
-                      ).toLocaleDateString(
-                        'fr-FR'
-                      )}{' '}
-                      · Coefficient{' '}
-                      {
-                        selectedEvaluation.coefficient
-                      }
-                    </p>
-                  </div>
-
-                  <span className="text-xs text-primary-400">
-                    /
+                  <p className="text-xs text-primary-400">
+                    {
+                      selectedEvaluation.subject
+                    }{' '}
+                    · /
                     {
                       selectedEvaluation.max_score
+                    }{' '}
+                    · Coeff.{' '}
+                    {
+                      selectedEvaluation.coefficient
                     }
-                  </span>
+                  </p>
                 </div>
-
-                {!loadingGrades &&
-                  students.length >
-                    0 && (
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                      <div className="rounded-lg bg-primary-50 p-2">
-                        <p className="text-xs text-primary-400">
-                          Notés
-                        </p>
-
-                        <p className="font-semibold text-primary-800">
-                          {
-                            gradebookStats.graded
-                          }
-                          /
-                          {
-                            students.length
-                          }
-                        </p>
-                      </div>
-
-                      <div className="rounded-lg bg-primary-50 p-2">
-                        <p className="text-xs text-primary-400">
-                          Absents
-                        </p>
-
-                        <p className="font-semibold text-primary-800">
-                          {
-                            gradebookStats.absent
-                          }
-                        </p>
-                      </div>
-
-                      <div className="rounded-lg bg-primary-50 p-2">
-                        <p className="text-xs text-primary-400">
-                          À saisir
-                        </p>
-
-                        <p className="font-semibold text-primary-800">
-                          {
-                            gradebookStats.missing
-                          }
-                        </p>
-                      </div>
-
-                      <div className="rounded-lg bg-primary-50 p-2">
-                        <p className="text-xs text-primary-400">
-                          Moyenne
-                        </p>
-
-                        <p className="font-semibold text-primary-800">
-                          {gradebookStats.average ===
-                          null
-                            ? '—'
-                            : gradebookStats.average.toFixed(
-                                2
-                              )}
-                        </p>
-                      </div>
-
-                      <div className="rounded-lg bg-primary-50 p-2">
-                        <p className="text-xs text-primary-400">
-                          Meilleure /
-                          faible
-                        </p>
-
-                        <p className="font-semibold text-primary-800">
-                          {gradebookStats.best ===
-                          null
-                            ? '—'
-                            : `${gradebookStats.best} / ${gradebookStats.lowest}`}
-                        </p>
-                      </div>
-                    </div>
-                  )}
               </div>
 
+              {!loadingGrades &&
+                students.length > 0 && (
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
+                    <div className="rounded-lg bg-primary-50 p-2">
+                      <p className="text-xs text-primary-400">
+                        Notés
+                      </p>
+                      <p className="font-semibold text-primary-800">
+                        {
+                          gradebookStats.graded
+                        }
+                        /
+                        {
+                          students.length
+                        }
+                      </p>
+                    </div>
+
+                    <div className="rounded-lg bg-primary-50 p-2">
+                      <p className="text-xs text-primary-400">
+                        Absents
+                      </p>
+                      <p className="font-semibold text-primary-800">
+                        {
+                          gradebookStats.absent
+                        }
+                      </p>
+                    </div>
+
+                    <div className="rounded-lg bg-primary-50 p-2">
+                      <p className="text-xs text-primary-400">
+                        À saisir
+                      </p>
+                      <p className="font-semibold text-primary-800">
+                        {
+                          gradebookStats.missing
+                        }
+                      </p>
+                    </div>
+
+                    <div className="rounded-lg bg-primary-50 p-2">
+                      <p className="text-xs text-primary-400">
+                        Moyenne
+                      </p>
+                      <p className="font-semibold text-primary-800">
+                        {gradebookStats.average ===
+                        null
+                          ? '—'
+                          : gradebookStats.average.toFixed(
+                              2
+                            )}
+                      </p>
+                    </div>
+
+                    <div className="rounded-lg bg-primary-50 p-2">
+                      <p className="text-xs text-primary-400">
+                        Meilleure
+                      </p>
+                      <p className="font-semibold text-primary-800">
+                        {gradebookStats.best ===
+                        null
+                          ? '—'
+                          : `${gradebookStats.best}/${selectedEvaluation.max_score}`}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
               {loadingGrades ? (
-                <p className="text-sm text-primary-400 py-4">
-                  Chargement des
-                  notes…
-                </p>
-              ) : students.length ===
-                0 ? (
-                <p className="text-sm text-primary-400 py-4">
-                  Aucun élève dans
-                  cette classe.
+                <p className="text-sm text-primary-400">
+                  Chargement des notes…
                 </p>
               ) : (
                 <>
-                  <div className="flex items-center justify-between gap-3 mb-3">
-                    <p className="text-xs text-primary-400">
-                      Saisissez les notes
-                      rapidement.{' '}
-                      <b>Entrée</b> passe
-                      à l’élève suivant.
-                    </p>
-
+                  <div className="flex justify-end mb-3">
                     <button
                       type="button"
                       onClick={() =>
@@ -1453,12 +1678,9 @@ export default function ClassDetail() {
                       disabled={
                         savingAllGrades
                       }
-                      className="btn-primary flex items-center gap-2 text-sm disabled:opacity-50"
+                      className="btn-primary flex items-center gap-2 text-sm"
                     >
-                      <Save
-                        size={16}
-                      />
-
+                      <Save size={16} />
                       {savingAllGrades
                         ? 'Enregistrement…'
                         : 'Enregistrer tout'}
@@ -1476,27 +1698,20 @@ export default function ClassDetail() {
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[620px] text-sm">
                       <thead>
-                        <tr className="border-b border-primary-100 text-left text-xs text-primary-400">
-                          <th className="py-2 px-2 w-12">
+                        <tr className="border-b border-primary-100 text-xs text-primary-400 text-left">
+                          <th className="py-2 px-2">
                             N°
                           </th>
-
                           <th className="py-2 px-2">
                             Élève
                           </th>
-
-                          <th className="py-2 px-2 w-32 text-center">
-                            Note /
-                            {
-                              selectedEvaluation.max_score
-                            }
+                          <th className="py-2 px-2 text-center">
+                            Note
                           </th>
-
-                          <th className="py-2 px-2 w-28 text-center">
+                          <th className="py-2 px-2 text-center">
                             Absence
                           </th>
-
-                          <th className="py-2 px-2 w-24 text-center">
+                          <th className="py-2 px-2 text-center">
                             État
                           </th>
                         </tr>
@@ -1519,43 +1734,25 @@ export default function ClassDetail() {
                                 student.id
                               ] ?? ''
 
-                            const hasValue =
-                              value.trim() !==
-                              ''
-
                             return (
                               <tr
                                 key={
                                   student.id
                                 }
-                                className={`border-b border-primary-50 ${
-                                  absent
-                                    ? 'bg-primary-50/60'
-                                    : ''
-                                }`}
+                                className="border-b border-primary-50"
                               >
                                 <td className="py-2 px-2 text-xs text-primary-400">
                                   {index +
                                     1}
                                 </td>
 
-                                <td className="py-2 px-2">
-                                  <p className="font-medium text-primary-800">
-                                    {
-                                      student.last_name
-                                    }{' '}
-                                    {
-                                      student.first_name
-                                    }
-                                  </p>
-
-                                  {student.matricule && (
-                                    <p className="text-xs text-primary-400">
-                                      {
-                                        student.matricule
-                                      }
-                                    </p>
-                                  )}
+                                <td className="py-2 px-2 font-medium text-primary-800">
+                                  {
+                                    student.last_name
+                                  }{' '}
+                                  {
+                                    student.first_name
+                                  }
                                 </td>
 
                                 <td className="py-2 px-2">
@@ -1581,9 +1778,7 @@ export default function ClassDetail() {
                                     ) =>
                                       updateDraftScore(
                                         student.id,
-                                        e
-                                          .target
-                                          .value
+                                        e.target.value
                                       )
                                     }
                                     onKeyDown={(
@@ -1594,18 +1789,13 @@ export default function ClassDetail() {
                                         'Enter'
                                       ) {
                                         e.preventDefault()
-
                                         focusNextGradeInput(
                                           index
                                         )
                                       }
                                     }}
                                     className="input-field w-24 mx-auto text-center"
-                                    placeholder={
-                                      absent
-                                        ? 'ABS'
-                                        : '—'
-                                    }
+                                    placeholder="—"
                                   />
                                 </td>
 
@@ -1620,10 +1810,10 @@ export default function ClassDetail() {
                                     disabled={
                                       savingAllGrades
                                     }
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                                    className={`px-3 py-1.5 rounded-lg text-xs ${
                                       absent
                                         ? 'bg-red-100 text-red-700'
-                                        : 'bg-primary-50 text-primary-600 hover:bg-primary-100'
+                                        : 'bg-primary-50 text-primary-600'
                                     }`}
                                   >
                                     {absent
@@ -1632,20 +1822,12 @@ export default function ClassDetail() {
                                   </button>
                                 </td>
 
-                                <td className="py-2 px-2 text-center">
-                                  {absent ? (
-                                    <span className="text-xs text-red-600">
-                                      Absent
-                                    </span>
-                                  ) : hasValue ? (
-                                    <span className="text-xs text-green-600">
-                                      Saisi
-                                    </span>
-                                  ) : (
-                                    <span className="text-xs text-primary-400">
-                                      À saisir
-                                    </span>
-                                  )}
+                                <td className="py-2 px-2 text-center text-xs">
+                                  {absent
+                                    ? 'Absent'
+                                    : value.trim()
+                                      ? 'Saisi'
+                                      : 'À saisir'}
                                 </td>
                               </tr>
                             )
@@ -1653,27 +1835,6 @@ export default function ClassDetail() {
                         )}
                       </tbody>
                     </table>
-                  </div>
-
-                  <div className="mt-4 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void saveAllGrades()
-                      }
-                      disabled={
-                        savingAllGrades
-                      }
-                      className="btn-primary flex items-center gap-2 text-sm disabled:opacity-50"
-                    >
-                      <Save
-                        size={16}
-                      />
-
-                      {savingAllGrades
-                        ? 'Enregistrement…'
-                        : 'Enregistrer tout'}
-                    </button>
                   </div>
                 </>
               )}
@@ -1701,7 +1862,6 @@ export default function ClassDetail() {
                     setShowEvaluationForm(
                       true
                     )
-                    setErrorMessage('')
                   }}
                   className="btn-primary flex items-center gap-1 text-sm"
                 >
@@ -1713,8 +1873,7 @@ export default function ClassDetail() {
               {evaluations.length ===
               0 ? (
                 <p className="text-sm text-primary-400">
-                  Aucune évaluation
-                  pour cette classe.
+                  Aucune évaluation.
                 </p>
               ) : (
                 <div className="divide-y divide-primary-100">
@@ -1732,7 +1891,7 @@ export default function ClassDetail() {
                             evaluation
                           )
                         }
-                        className="w-full py-3 flex items-center justify-between gap-3 text-left hover:bg-primary-50 rounded-lg px-2"
+                        className="w-full py-3 flex items-center justify-between text-left hover:bg-primary-50 rounded-lg px-2"
                       >
                         <div>
                           <p className="font-medium text-primary-800 text-sm">
@@ -1745,27 +1904,19 @@ export default function ClassDetail() {
                             {
                               evaluation.subject
                             }{' '}
-                            ·{' '}
-                            {new Date(
-                              evaluation.eval_date
-                            ).toLocaleDateString(
-                              'fr-FR'
-                            )}{' '}
-                            · Coeff.{' '}
-                            {
-                              evaluation.coefficient
-                            }{' '}
                             · /
                             {
                               evaluation.max_score
+                            }{' '}
+                            · Coeff.{' '}
+                            {
+                              evaluation.coefficient
                             }
                           </p>
                         </div>
 
-                        <span className="text-xs px-2 py-1 rounded-full bg-primary-50 text-primary-600 capitalize">
-                          {
-                            evaluation.type
-                          }
+                        <span className="text-xs text-primary-600">
+                          Ouvrir
                         </span>
                       </button>
                     )
@@ -1780,31 +1931,294 @@ export default function ClassDetail() {
       {activeSection ===
         'resultats' && (
         <section className="card">
-          <div className="flex items-center gap-2 mb-2">
-            <BarChart3
-              size={20}
-              className="text-primary-500"
-            />
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <BarChart3
+                  size={20}
+                  className="text-primary-500"
+                />
 
-            <h2 className="font-semibold text-primary-800">
-              Résultats de{' '}
-              {schoolClass.name}
-            </h2>
+                <h2 className="font-semibold text-primary-800">
+                  Carnet de notes
+                  intelligent
+                </h2>
+              </div>
+
+              <p className="text-sm text-primary-500 mt-1">
+                {students.length}{' '}
+                élèves ·{' '}
+                {evaluations.length}{' '}
+                évaluations
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-primary-50 px-4 py-2">
+              <p className="text-xs text-primary-400">
+                Moyenne de la classe
+              </p>
+
+              <p className="text-xl font-semibold text-primary-800">
+                {classAverage ===
+                null
+                  ? '—'
+                  : `${classAverage.toFixed(2)}/20`}
+              </p>
+            </div>
           </div>
 
-          <p className="text-sm text-primary-500">
-            Les moyennes, le
-            classement et les
-            statistiques de la
-            classe seront regroupés
-            ici.
-          </p>
+          {evaluations.length ===
+          0 ? (
+            <div className="rounded-lg bg-primary-50 p-4">
+              <p className="text-sm text-primary-600">
+                Créez d'abord des
+                évaluations pour
+                construire le carnet
+                de notes.
+              </p>
+            </div>
+          ) : loadingGradebook ? (
+            <p className="text-sm text-primary-400 py-5">
+              Construction du carnet
+              de notes…
+            </p>
+          ) : (
+            <>
+              <div className="mb-3 rounded-lg bg-primary-50 p-3">
+                <p className="text-xs text-primary-500">
+                  La moyenne est calculée
+                  automatiquement sur 20,
+                  en tenant compte des
+                  coefficients des
+                  évaluations.
+                </p>
+              </div>
 
-          <p className="text-xs text-primary-400 mt-2">
-            Les données des
-            évaluations existantes
-            sont conservées.
-          </p>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[900px] text-sm">
+                  <thead>
+                    <tr className="border-b border-primary-100 text-xs text-primary-400">
+                      <th className="py-3 px-2 text-left w-12">
+                        Rang
+                      </th>
+
+                      <th className="py-3 px-2 text-left">
+                        Élève
+                      </th>
+
+                      {evaluations.map(
+                        (evaluation) => (
+                          <th
+                            key={
+                              evaluation.id
+                            }
+                            className="py-3 px-2 text-center"
+                          >
+                            <div>
+                              {
+                                evaluation.title
+                              }
+                            </div>
+
+                            <div className="font-normal">
+                              {evaluation.subject}
+                              {' · '}
+                              C{
+                                evaluation.coefficient
+                              }
+                            </div>
+                          </th>
+                        )
+                      )}
+
+                      <th className="py-3 px-2 text-center">
+                        Moyenne
+                      </th>
+
+                      <th className="py-3 px-2 text-center">
+                        Notes
+                      </th>
+
+                      <th className="py-3 px-2 text-center">
+                        À saisir
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {rankedStudents.map(
+                      (result) => (
+                        <tr
+                          key={
+                            result.student.id
+                          }
+                          className="border-b border-primary-50 hover:bg-primary-50/50"
+                        >
+                          <td className="py-3 px-2 text-center font-semibold text-primary-700">
+                            {result.rank ??
+                              '—'}
+                          </td>
+
+                          <td className="py-3 px-2">
+                            <p className="font-medium text-primary-800">
+                              {
+                                result.student.last_name
+                              }{' '}
+                              {
+                                result.student.first_name
+                              }
+                            </p>
+
+                            {result.student.matricule && (
+                              <p className="text-xs text-primary-400">
+                                {
+                                  result.student.matricule
+                                }
+                              </p>
+                            )}
+                          </td>
+
+                          {evaluations.map(
+                            (
+                              evaluation
+                            ) => {
+                              const grade =
+                                allGrades[
+                                  `${evaluation.id}:${result.student.id}`
+                                ]
+
+                              return (
+                                <td
+                                  key={
+                                    evaluation.id
+                                  }
+                                  className="py-3 px-2 text-center"
+                                >
+                                  {!grade ? (
+                                    <span className="text-primary-300">
+                                      —
+                                    </span>
+                                  ) : grade.is_absent ? (
+                                    <span className="text-red-600 font-medium">
+                                      ABS
+                                    </span>
+                                  ) : grade.score ===
+                                    null ? (
+                                    <span className="text-primary-300">
+                                      —
+                                    </span>
+                                  ) : (
+                                    <span className="font-medium text-primary-800">
+                                      {
+                                        grade.score
+                                      }
+                                      /
+                                      {
+                                        evaluation.max_score
+                                      }
+                                    </span>
+                                  )}
+                                </td>
+                              )
+                            }
+                          )}
+
+                          <td className="py-3 px-2 text-center">
+                            {result.average ===
+                            null ? (
+                              <span className="text-primary-300">
+                                —
+                              </span>
+                            ) : (
+                              <span className="font-bold text-primary-800">
+                                {result.average.toFixed(
+                                  2
+                                )}
+                                /20
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-2 text-center text-xs text-primary-500">
+                            {result.graded}
+                            /
+                            {
+                              evaluations.length
+                            }
+                          </td>
+
+                          <td className="py-3 px-2 text-center">
+                            {result.missing >
+                            0 ? (
+                              <span className="inline-flex rounded-full bg-orange-100 text-orange-700 px-2 py-1 text-xs">
+                                {
+                                  result.missing
+                                }
+                              </span>
+                            ) : (
+                              <span className="text-green-600 text-xs">
+                                Complet
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {students.length >
+                0 && (
+                <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="rounded-lg bg-primary-50 p-3">
+                    <p className="text-xs text-primary-400">
+                      Élèves
+                    </p>
+                    <p className="text-lg font-semibold text-primary-800">
+                      {
+                        students.length
+                      }
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg bg-primary-50 p-3">
+                    <p className="text-xs text-primary-400">
+                      Évaluations
+                    </p>
+                    <p className="text-lg font-semibold text-primary-800">
+                      {
+                        evaluations.length
+                      }
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg bg-primary-50 p-3">
+                    <p className="text-xs text-primary-400">
+                      Moyenne classe
+                    </p>
+                    <p className="text-lg font-semibold text-primary-800">
+                      {classAverage ===
+                      null
+                        ? '—'
+                        : classAverage.toFixed(
+                            2
+                          )}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg bg-primary-50 p-3">
+                    <p className="text-xs text-primary-400">
+                      Carnet
+                    </p>
+                    <p className="text-lg font-semibold text-green-600">
+                      Actif
+                    </p>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </section>
       )}
 
@@ -1842,8 +2256,7 @@ export default function ClassDetail() {
               {whatsappCount > 1
                 ? 's'
                 : ''}{' '}
-              avec un numéro
-              WhatsApp.
+              avec un numéro WhatsApp.
 
               {missingWhatsappCount >
                 0 &&
@@ -1918,10 +2331,6 @@ export default function ClassDetail() {
                     selectAllCommunicationStudents
                   }
                   className="btn-secondary text-xs flex items-center gap-1"
-                  disabled={
-                    whatsappStudents.length ===
-                    0
-                  }
                 >
                   <CheckSquare
                     size={14}
@@ -1935,10 +2344,6 @@ export default function ClassDetail() {
                     clearCommunicationSelection
                   }
                   className="btn-secondary text-xs"
-                  disabled={
-                    selectedCommunicationStudents.length ===
-                    0
-                  }
                 >
                   Désélectionner
                 </button>
@@ -1951,8 +2356,7 @@ export default function ClassDetail() {
                 <p className="text-sm text-primary-400">
                   Aucun numéro WhatsApp
                   de parent n'est
-                  enregistré pour cette
-                  classe.
+                  enregistré.
                 </p>
               </div>
             ) : (
@@ -1969,11 +2373,7 @@ export default function ClassDetail() {
                         key={
                           student.id
                         }
-                        className={`flex items-center gap-3 p-3 cursor-pointer transition ${
-                          selected
-                            ? 'bg-primary-50'
-                            : 'hover:bg-primary-50'
-                        }`}
+                        className="flex items-center gap-3 p-3 cursor-pointer hover:bg-primary-50"
                       >
                         <input
                           type="checkbox"
@@ -1985,10 +2385,9 @@ export default function ClassDetail() {
                               student.id
                             )
                           }
-                          className="h-4 w-4"
                         />
 
-                        <div className="flex-1 min-w-0">
+                        <div>
                           <p className="text-sm font-medium text-primary-800">
                             {
                               student.last_name
@@ -2010,99 +2409,55 @@ export default function ClassDetail() {
                 )}
               </div>
             )}
-
-            {missingWhatsappCount >
-              0 && (
-              <div className="p-3 border-t border-primary-100">
-                <p className="text-xs text-primary-400">
-                  {
-                    missingWhatsappCount
-                  }{' '}
-                  élève
-                  {missingWhatsappCount >
-                  1
-                    ? 's'
-                    : ''}{' '}
-                  sans numéro
-                  WhatsApp.
-                </p>
-              </div>
-            )}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-primary-800 mb-2">
-              Message
-            </label>
-
-            <textarea
-              value={
-                communicationMessage
-              }
-              onChange={(e) => {
-                setCommunicationMessage(
-                  e.target.value
-                )
-
-                setCommunicationResult(
-                  ''
-                )
-              }}
-              placeholder="Écrivez votre message aux parents..."
-              rows={6}
-              className="input-field w-full resize-y"
-            />
-
-            <p className="text-xs text-primary-400 mt-1">
-              Le nom de l'élève et la
-              classe seront ajoutés
-              automatiquement.
-            </p>
-          </div>
+          <textarea
+            value={
+              communicationMessage
+            }
+            onChange={(e) =>
+              setCommunicationMessage(
+                e.target.value
+              )
+            }
+            placeholder="Écrivez votre message aux parents..."
+            rows={6}
+            className="input-field w-full resize-y"
+          />
 
           {communicationResult && (
-            <div className="border border-primary-100 bg-primary-50 rounded-lg p-3">
-              <p className="text-sm text-primary-700">
-                {
-                  communicationResult
-                }
-              </p>
+            <div className="rounded-lg bg-primary-50 p-3 text-sm text-primary-700">
+              {
+                communicationResult
+              }
             </div>
           )}
 
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <button
-              type="button"
-              onClick={
-                openWhatsAppCommunication
-              }
-              disabled={
-                sendingCommunication ||
-                selectedWhatsappStudents.length ===
-                  0 ||
-                !communicationMessage.trim()
-              }
-              className="btn-primary flex items-center justify-center gap-2 text-sm disabled:opacity-50"
-            >
-              <MessageCircle
-                size={17}
-              />
+          <button
+            type="button"
+            onClick={
+              openWhatsAppCommunication
+            }
+            disabled={
+              sendingCommunication ||
+              selectedWhatsappStudents.length ===
+                0 ||
+              !communicationMessage.trim()
+            }
+            className="btn-primary flex items-center gap-2 text-sm disabled:opacity-50"
+          >
+            <MessageCircle size={17} />
 
-              {sendingCommunication
-                ? 'Ouverture…'
-                : `Ouvrir WhatsApp pour ${selectedWhatsappStudents.length} destinataire${
-                    selectedWhatsappStudents.length >
-                    1
-                      ? 's'
-                      : ''
-                  }`}
-            </button>
-
-            <span className="text-xs text-primary-400">
-              WhatsApp s'ouvrira avec
-              le message déjà préparé.
-            </span>
-          </div>
+            Ouvrir WhatsApp pour{' '}
+            {
+              selectedWhatsappStudents.length
+            }{' '}
+            destinataire
+            {selectedWhatsappStudents.length >
+            1
+              ? 's'
+              : ''}
+          </button>
         </section>
       )}
 
@@ -2120,11 +2475,6 @@ export default function ClassDetail() {
               {schoolClass.name}
             </h2>
           </div>
-
-          <p className="text-sm text-primary-500">
-            Paramètres propres à
-            cette classe.
-          </p>
 
           <div className="mt-4 space-y-2 text-sm text-primary-500">
             <p>
@@ -2152,9 +2502,9 @@ export default function ClassDetail() {
             </p>
 
             <p>
-              Numéros WhatsApp :{' '}
+              Évaluations :{' '}
               <span className="text-primary-800">
-                {whatsappCount}
+                {evaluations.length}
               </span>
             </p>
           </div>
