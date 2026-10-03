@@ -25,10 +25,7 @@ import { useAuth } from '@/lib/AuthContext'
 import ClassWhatsAppSendButton from '@/components/ClassWhatsAppSendButton'
 import PhotoImportButton from '@/components/PhotoImportButton'
 
-import {
-  insertImportedStudents,
-  type ImportedRow
-} from '@/lib/studentImport'
+import { insertImportedStudents } from '@/lib/studentImport'
 
 import {
   parseStudentsFile,
