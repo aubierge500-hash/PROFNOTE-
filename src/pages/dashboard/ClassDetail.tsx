@@ -3254,4 +3254,4 @@ export default function ClassDetail() {
       )}
     </div>
   )
-}
+} 
