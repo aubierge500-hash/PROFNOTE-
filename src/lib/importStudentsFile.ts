@@ -559,11 +559,6 @@ async function parsePDF(
                 ? 0
                 : value.x - previousRight
 
-            /*
-             * Un grand espace horizontal correspond
-             * généralement à une nouvelle colonne
-             * dans les PDF provenant de Word/Excel.
-             */
             if (
               current &&
               gap > 18
@@ -627,6 +622,75 @@ async function parsePDF(
   }
 }
 
+function isWhatsAppValue(value: string): boolean {
+  const digits = value.replace(/\D/g, '')
+
+  if (!digits) {
+    return false
+  }
+
+  if (
+    digits.length === 8 ||
+    digits.length === 10 ||
+    (digits.startsWith('229') && digits.length >= 11)
+  ) {
+    return true
+  }
+
+  return false
+}
+
+function normalizeGenderValue(value: string): string {
+  const normalized =
+    normalizeHeader(value)
+
+  if (
+    ['f', 'feminin', 'female', 'fille']
+      .includes(normalized)
+  ) {
+    return 'F'
+  }
+
+  if (
+    ['m', 'masculin', 'male', 'garcon']
+      .includes(normalized)
+  ) {
+    return 'M'
+  }
+
+  return ''
+}
+
+function parseTextColumns(
+  originalLine: string
+): string[] {
+  if (originalLine.includes('\t')) {
+    return originalLine
+      .split(/\t+/)
+      .map((value) => value.trim())
+      .filter(Boolean)
+  }
+
+  if (originalLine.includes(';')) {
+    return originalLine
+      .split(';')
+      .map((value) => value.trim())
+      .filter(Boolean)
+  }
+
+  if (originalLine.includes(',')) {
+    return originalLine
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+  }
+
+  return originalLine
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+}
+
 function parseTextLines(
   lines: string[]
 ): ImportedRow[] {
@@ -667,49 +731,75 @@ function parseTextLines(
         ''
       )
 
-    const tabColumns =
-      originalLine
-        .split(/\t+/)
-        .map((value) =>
-          value.trim()
-        )
-        .filter(Boolean)
+    const columns =
+      parseTextColumns(
+        originalLine
+      )
 
-    if (tabColumns.length >= 2) {
-      const possibleGender =
-        normalizeHeader(
-          tabColumns[
-            tabColumns.length - 1
-          ]
-        )
+    if (columns.length >= 2) {
+      const working = [
+        ...columns
+      ]
 
       let sexe = ''
+      let whatsapp = ''
 
-      if (
-        ['f', 'feminin', 'female']
-          .includes(
-            possibleGender
+      const genderIndex =
+        working.findIndex(
+          (value) =>
+            Boolean(
+              normalizeGenderValue(value)
+            )
+        )
+
+      if (genderIndex >= 0) {
+        sexe =
+          normalizeGenderValue(
+            working[genderIndex]
           )
-      ) {
-        sexe = 'F'
-        tabColumns.pop()
-      } else if (
-        ['m', 'masculin', 'male']
-          .includes(
-            possibleGender
-          )
-      ) {
-        sexe = 'M'
-        tabColumns.pop()
+
+        working.splice(
+          genderIndex,
+          1
+        )
       }
 
-      rows.push({
-        Nom: tabColumns[0] ?? '',
-        Prenom: tabColumns[1] ?? '',
-        Sexe: sexe
-      })
+      const whatsappIndex =
+        working.findIndex(
+          (value) =>
+            isWhatsAppValue(value)
+        )
 
-      continue
+      if (whatsappIndex >= 0) {
+        whatsapp =
+          working[whatsappIndex]
+
+        working.splice(
+          whatsappIndex,
+          1
+        )
+      }
+
+      if (working.length >= 2) {
+        const nom =
+          working[0] ?? ''
+
+        const prenom =
+          working
+            .slice(1)
+            .join(' ')
+
+        if (nom && prenom) {
+          rows.push({
+            Nom: nom,
+            Prenom: prenom,
+            Sexe: sexe,
+            WhatsApp: whatsapp
+          })
+
+          continue
+        }
+      }
     }
 
     const parts =
@@ -721,25 +811,43 @@ function parseTextLines(
       continue
     }
 
-    const possibleGender =
-      normalizeHeader(
-        parts[parts.length - 1]
+    let sexe = ''
+    let whatsapp = ''
+
+    const genderIndex =
+      parts.findIndex(
+        (value) =>
+          Boolean(
+            normalizeGenderValue(value)
+          )
       )
 
-    let sexe = ''
+    if (genderIndex >= 0) {
+      sexe =
+        normalizeGenderValue(
+          parts[genderIndex]
+        )
 
-    if (
-      ['f', 'feminin', 'female']
-        .includes(possibleGender)
-    ) {
-      sexe = 'F'
-      parts.pop()
-    } else if (
-      ['m', 'masculin', 'male']
-        .includes(possibleGender)
-    ) {
-      sexe = 'M'
-      parts.pop()
+      parts.splice(
+        genderIndex,
+        1
+      )
+    }
+
+    const whatsappIndex =
+      parts.findIndex(
+        (value) =>
+          isWhatsAppValue(value)
+      )
+
+    if (whatsappIndex >= 0) {
+      whatsapp =
+        parts[whatsappIndex]
+
+      parts.splice(
+        whatsappIndex,
+        1
+      )
     }
 
     const nom =
@@ -752,7 +860,8 @@ function parseTextLines(
       rows.push({
         Nom: nom,
         Prenom: prenom,
-        Sexe: sexe
+        Sexe: sexe,
+        WhatsApp: whatsapp
       })
     }
   }
