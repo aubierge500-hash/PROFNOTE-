@@ -4,6 +4,7 @@ import {
   School,
   UserCircle,
   LogOut,
+  MessageCircle
 } from 'lucide-react'
 import { useAuth } from '@/lib/AuthContext'
 
@@ -12,13 +13,18 @@ const navItems = [
     to: '/',
     label: 'Tableau de bord',
     icon: LayoutDashboard,
-    end: true,
+    end: true
   },
   {
     to: '/classes',
     label: 'Classes',
-    icon: School,
+    icon: School
   },
+  {
+    to: '/whatsapp',
+    label: 'WhatsApp',
+    icon: MessageCircle
+  }
 ]
 
 export default function DashboardLayout() {
@@ -26,17 +32,17 @@ export default function DashboardLayout() {
 
   return (
     <div className="min-h-screen bg-primary-50 flex">
-      {/* Sidebar */}
       <aside className="w-64 bg-primary-800 text-white flex flex-col">
-        {/* Logo */}
         <div className="p-5 border-b border-primary-700">
-          <h1 className="text-xl font-display font-bold">PROFNOTE</h1>
+          <h1 className="text-xl font-display font-bold">
+            PROFNOTE
+          </h1>
+
           <p className="text-xs text-primary-300 mt-1">
             Gestion des notes
           </p>
         </div>
 
-        {/* Navigation principale */}
         <nav className="flex-1 p-3 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon
@@ -61,12 +67,11 @@ export default function DashboardLayout() {
           })}
         </nav>
 
-        {/* Profil + déconnexion */}
         <div className="p-3 border-t border-primary-700">
           <NavLink
             to="/profil"
             className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${
                 isActive
                   ? 'bg-primary-600 text-white'
                   : 'text-primary-200 hover:bg-primary-700'
@@ -93,7 +98,6 @@ export default function DashboardLayout() {
         </div>
       </aside>
 
-      {/* Contenu principal */}
       <main className="flex-1 min-w-0">
         <Outlet />
       </main>
