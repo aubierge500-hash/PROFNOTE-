@@ -21,6 +21,33 @@ import {
 import PhotoImportButton from '@/components/PhotoImportButton'
 import type { SchoolClass, Student } from '@/types/database'
 
+function normalizeBeninWhatsApp(
+  value?: string
+): string | null {
+  const digits = String(value ?? '').replace(/\D/g, '')
+
+  if (!digits) return null
+
+  let local = digits.startsWith('229')
+    ? digits.slice(3)
+    : digits
+
+  if (local.length === 8) {
+    local = `01${local}`
+  }
+
+  if (!/^01\d{8}$/.test(local)) {
+    return null
+  }
+
+  return `+229${local}`
+}
+
+function isValidWhatsApp(value?: string): boolean {
+  if (!value?.trim()) return true
+  return normalizeBeninWhatsApp(value) !== null
+}
+
 export default function Students() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -97,15 +124,32 @@ export default function Students() {
   async function handleAddManual() {
     if (!form.last_name.trim() || !selectedClass) return
 
-    await supabase.from('students').insert({
-      teacher_id: user!.id,
-      class_id: selectedClass,
-      last_name: form.last_name.trim(),
-      first_name: form.first_name.trim(),
-      gender: form.gender || null,
-      parent_whatsapp: form.parent_whatsapp || null,
-      is_active: true
-    })
+    if (
+      form.parent_whatsapp.trim() &&
+      !isValidWhatsApp(form.parent_whatsapp)
+    ) {
+      return
+    }
+
+    const normalizedWhatsApp =
+      normalizeBeninWhatsApp(form.parent_whatsapp)
+
+    const { error } = await supabase
+      .from('students')
+      .insert({
+        teacher_id: user!.id,
+        class_id: selectedClass,
+        last_name: form.last_name.trim(),
+        first_name: form.first_name.trim(),
+        gender: form.gender || null,
+        parent_whatsapp: normalizedWhatsApp,
+        is_active: true
+      })
+
+    if (error) {
+      setImportError(error.message)
+      return
+    }
 
     setForm({
       last_name: '',
@@ -166,22 +210,34 @@ export default function Students() {
 
       const first = columns[0]
       const second = columns[1]
-      const third = columns[2] ?? ''
 
-      const possibleGender = third
-        .trim()
-        .toUpperCase()
+      let gender = ''
+      let whatsapp = ''
 
-      const gender =
-        possibleGender === 'F' ||
-        possibleGender === 'M'
-          ? possibleGender
-          : ''
+      for (const value of columns.slice(2)) {
+        const upper = value.toUpperCase()
+
+        if (
+          !gender &&
+          (upper === 'F' || upper === 'M')
+        ) {
+          gender = upper
+          continue
+        }
+
+        if (
+          !whatsapp &&
+          normalizeBeninWhatsApp(value)
+        ) {
+          whatsapp = value
+        }
+      }
 
       rows.push({
         Nom: first,
         Prenom: second,
-        Sexe: gender
+        Sexe: gender,
+        WhatsApp: whatsapp
       })
     }
 
@@ -202,10 +258,35 @@ export default function Students() {
     }
 
     setPasteRows(rows)
+
+    const invalidWhatsApp = rows.filter(
+      (row) =>
+        row.WhatsApp &&
+        !isValidWhatsApp(row.WhatsApp)
+    )
+
+    if (invalidWhatsApp.length > 0) {
+      setPasteError(
+        `${invalidWhatsApp.length} numéro(s) WhatsApp invalide(s). Vérifiez la liste avant l'import.`
+      )
+    }
   }
 
   async function confirmPastedImport() {
     if (!user || !selectedClass || pasteRows.length === 0) {
+      return
+    }
+
+    const invalidWhatsApp = pasteRows.filter(
+      (row) =>
+        row.WhatsApp &&
+        !isValidWhatsApp(row.WhatsApp)
+    )
+
+    if (invalidWhatsApp.length > 0) {
+      setPasteError(
+        'Impossible d’importer : au moins un numéro WhatsApp est invalide.'
+      )
       return
     }
 
@@ -284,6 +365,19 @@ export default function Students() {
       return
     }
 
+    const invalidWhatsApp = validRows.filter(
+      (row) =>
+        row.WhatsApp &&
+        !isValidWhatsApp(row.WhatsApp)
+    )
+
+    if (invalidWhatsApp.length > 0) {
+      setImportError(
+        `${invalidWhatsApp.length} numéro(s) WhatsApp invalide(s). Corrigez-les avant de confirmer l'import.`
+      )
+      return
+    }
+
     setImporting(true)
     setImportError('')
 
@@ -312,6 +406,14 @@ export default function Students() {
         (row) =>
           !row.Nom?.trim() ||
           !row.Prenom?.trim()
+      ).length
+    : 0
+
+  const invalidFileWhatsApp = importResult
+    ? importResult.rows.filter(
+        (row) =>
+          row.WhatsApp &&
+          !isValidWhatsApp(row.WhatsApp)
       ).length
     : 0
 
@@ -519,24 +621,24 @@ export default function Students() {
             </p>
 
             <p>
-              Nom → Prénom → Sexe
+              Nom → Prénom → Sexe → WhatsApp
             </p>
 
             <p className="mt-1">
-              Exemple : AHOTON&nbsp;&nbsp;Grâce&nbsp;&nbsp;F
+              Exemple : AHOTON&nbsp;&nbsp;Grâce&nbsp;&nbsp;F&nbsp;&nbsp;97123456
             </p>
 
             <p className="mt-1">
-              Vous pouvez copier directement depuis WhatsApp,
-              Excel, Word ou cette conversation.
+              Vous pouvez copier directement depuis Excel,
+              Word ou cette conversation.
             </p>
           </div>
 
           <textarea
             className="input-field min-h-48 resize-y font-mono text-sm"
-            placeholder={`AHOTON\tGrâce\tF
-ADJOVI\tKévin\tM
-AGBOSSOU\tMariam\tF`}
+            placeholder={`AHOTON\tGrâce\tF\t97123456
+ADJOVI\tKévin\tM\t96123456
+AGBOSSOU\tMariam\tF\t90123456`}
             value={pasteText}
             onChange={(e) => {
               setPasteText(e.target.value)
@@ -574,6 +676,9 @@ AGBOSSOU\tMariam\tF`}
                       <th className="text-left p-2">
                         Sexe
                       </th>
+                      <th className="text-left p-2">
+                        WhatsApp
+                      </th>
                     </tr>
                   </thead>
 
@@ -597,6 +702,10 @@ AGBOSSOU\tMariam\tF`}
 
                         <td className="p-2">
                           {row.Sexe || '—'}
+                        </td>
+
+                        <td className="p-2">
+                          {row.WhatsApp || '—'}
                         </td>
                       </tr>
                     ))}
@@ -671,6 +780,13 @@ AGBOSSOU\tMariam\tF`}
               </p>
             )}
 
+            {invalidFileWhatsApp > 0 && (
+              <p className="text-xs text-red-700 mt-1">
+                {invalidFileWhatsApp} numéro(s) WhatsApp
+                invalide(s). Corrigez-les avant de confirmer.
+              </p>
+            )}
+
             {importResult.warnings.map(
               (warning, index) => (
                 <p
@@ -704,11 +820,16 @@ AGBOSSOU\tMariam\tF`}
                       !r.Nom?.trim() ||
                       !r.Prenom?.trim()
 
+                    const invalidWhatsApp =
+                      !!r.WhatsApp &&
+                      !isValidWhatsApp(r.WhatsApp)
+
                     return (
                       <tr
                         key={i}
                         className={`border-t border-primary-50 ${
-                          incomplete
+                          incomplete ||
+                          invalidWhatsApp
                             ? 'bg-red-50'
                             : ''
                         }`}
@@ -753,7 +874,9 @@ AGBOSSOU\tMariam\tF`}
             <button
               onClick={() => void confirmImport()}
               disabled={
-                importing || !selectedClass
+                importing ||
+                !selectedClass ||
+                invalidFileWhatsApp > 0
               }
               className="btn-primary text-sm disabled:opacity-50"
             >
