@@ -48,6 +48,218 @@ function isValidWhatsApp(value?: string): boolean {
   return normalizeBeninWhatsApp(value) !== null
 }
 
+function normalizeHeader(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+}
+
+function normalizeGender(value: string): string {
+  const normalized = normalizeHeader(value)
+
+  if (
+    normalized === 'f' ||
+    normalized === 'feminin' ||
+    normalized === 'fille' ||
+    normalized === 'female'
+  ) {
+    return 'F'
+  }
+
+  if (
+    normalized === 'm' ||
+    normalized === 'masculin' ||
+    normalized === 'garcon' ||
+    normalized === 'male'
+  ) {
+    return 'M'
+  }
+
+  return ''
+}
+
+function isWhatsAppValue(value: string): boolean {
+  const digits = value.replace(/\D/g, '')
+
+  if (!digits) return false
+
+  if (digits.startsWith('229')) {
+    return digits.length === 11
+  }
+
+  return digits.length === 8 || digits.length === 10
+}
+
+function isHeaderLine(line: string): boolean {
+  const normalized = normalizeHeader(line)
+
+  if (!normalized) return false
+
+  return (
+    normalized.includes('nomprenom') ||
+    normalized.includes('prenomnom') ||
+    normalized.includes('nom') &&
+      normalized.includes('prenom') ||
+      normalized.includes('nom') &&
+      normalized.includes('sexe') ||
+      normalized.includes('nom') &&
+      normalized.includes('whatsapp') ||
+      normalized.includes('listeeleves') ||
+      normalized.includes('listedeclasse') ||
+      normalized === 'eleves' ||
+      normalized === 'eleve'
+  )
+}
+
+function splitPastedLine(line: string): string[] {
+  const value = line
+    .replace(/\u00a0/g, ' ')
+    .trim()
+
+  if (!value) return []
+
+  if (value.includes('\t')) {
+    return value
+      .split(/\t+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+
+  if (value.includes(';')) {
+    return value
+      .split(/;/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+
+  if (value.includes('|')) {
+    return value
+      .split(/\|/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+
+  if (value.includes(',')) {
+    return value
+      .split(/,/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+
+  return value
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function removeRowNumber(columns: string[]): string[] {
+  if (columns.length === 0) return columns
+
+  const first = columns[0].replace(/[.)-]+$/, '')
+
+  if (/^\d+$/.test(first)) {
+    return columns.slice(1)
+  }
+
+  return columns
+}
+
+function parsePastedStudentsText(
+  text: string
+): ImportedRow[] {
+  const rows: ImportedRow[] = []
+
+  const lines = text
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+
+  for (const rawLine of lines) {
+    const line = rawLine
+      .replace(/\u00a0/g, ' ')
+      .trim()
+
+    if (!line) continue
+
+    if (isHeaderLine(line)) {
+      continue
+    }
+
+    let columns = splitPastedLine(line)
+
+    if (columns.length === 0) continue
+
+    columns = removeRowNumber(columns)
+
+    if (columns.length < 2) {
+      continue
+    }
+
+    let gender = ''
+    let whatsapp = ''
+
+    const remaining: string[] = []
+
+    for (const column of columns) {
+      const value = column.trim()
+
+      if (!value) continue
+
+      const detectedGender = normalizeGender(value)
+
+      if (!gender && detectedGender) {
+        gender = detectedGender
+        continue
+      }
+
+      if (!whatsapp && isWhatsAppValue(value)) {
+        whatsapp = value
+        continue
+      }
+
+      remaining.push(value)
+    }
+
+    if (remaining.length < 2) {
+      continue
+    }
+
+    const lastName = remaining[0].trim()
+    const firstName = remaining
+      .slice(1)
+      .join(' ')
+      .trim()
+
+    if (!lastName || !firstName) {
+      continue
+    }
+
+    rows.push({
+      Nom: lastName,
+      Prenom: firstName,
+      Sexe: gender,
+      WhatsApp: whatsapp
+    })
+  }
+
+  const seen = new Set<string>()
+
+  return rows.filter((row) => {
+    const key = normalizeHeader(
+      `${row.Nom} ${row.Prenom}`
+    )
+
+    if (!key || seen.has(key)) {
+      return false
+    }
+
+    seen.add(key)
+    return true
+  })
+}
+
 export default function Students() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -179,75 +391,10 @@ export default function Students() {
     void loadStudents()
   }
 
-  function parsePastedStudents(text: string): ImportedRow[] {
-    const lines = text
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-
-    const rows: ImportedRow[] = []
-
-    for (const line of lines) {
-      let columns: string[] = []
-
-      if (line.includes('\t')) {
-        columns = line.split('\t')
-      } else if (line.includes(';')) {
-        columns = line.split(';')
-      } else if (line.includes(',')) {
-        columns = line.split(',')
-      } else {
-        columns = line.split(/\s+/)
-      }
-
-      columns = columns
-        .map((value) => value.trim())
-        .filter(Boolean)
-
-      if (columns.length < 2) {
-        continue
-      }
-
-      const first = columns[0]
-      const second = columns[1]
-
-      let gender = ''
-      let whatsapp = ''
-
-      for (const value of columns.slice(2)) {
-        const upper = value.toUpperCase()
-
-        if (
-          !gender &&
-          (upper === 'F' || upper === 'M')
-        ) {
-          gender = upper
-          continue
-        }
-
-        if (
-          !whatsapp &&
-          normalizeBeninWhatsApp(value)
-        ) {
-          whatsapp = value
-        }
-      }
-
-      rows.push({
-        Nom: first,
-        Prenom: second,
-        Sexe: gender,
-        WhatsApp: whatsapp
-      })
-    }
-
-    return rows
-  }
-
   function previewPastedStudents() {
     setPasteError('')
 
-    const rows = parsePastedStudents(pasteText)
+    const rows = parsePastedStudentsText(pasteText)
 
     if (rows.length === 0) {
       setPasteRows([])
@@ -261,7 +408,7 @@ export default function Students() {
 
     const invalidWhatsApp = rows.filter(
       (row) =>
-        row.WhatsApp &&
+        !!row.WhatsApp &&
         !isValidWhatsApp(row.WhatsApp)
     )
 
@@ -279,7 +426,7 @@ export default function Students() {
 
     const invalidWhatsApp = pasteRows.filter(
       (row) =>
-        row.WhatsApp &&
+        !!row.WhatsApp &&
         !isValidWhatsApp(row.WhatsApp)
     )
 
@@ -617,7 +764,15 @@ export default function Students() {
 
           <div className="rounded-lg bg-primary-50 p-3 text-xs text-primary-600">
             <p className="font-medium mb-1">
-              Format accepté :
+              Formats acceptés :
+            </p>
+
+            <p>
+              Nom → Prénom
+            </p>
+
+            <p>
+              Nom → Prénom → Sexe
             </p>
 
             <p>
@@ -626,6 +781,10 @@ export default function Students() {
 
             <p className="mt-1">
               Exemple : AHOTON&nbsp;&nbsp;Grâce&nbsp;&nbsp;F&nbsp;&nbsp;97123456
+            </p>
+
+            <p className="mt-1">
+              Le numéro peut être écrit avec ou sans +229.
             </p>
 
             <p className="mt-1">
@@ -667,15 +826,19 @@ AGBOSSOU\tMariam\tF\t90123456`}
                       <th className="text-left p-2">
                         N°
                       </th>
+
                       <th className="text-left p-2">
                         Nom
                       </th>
+
                       <th className="text-left p-2">
                         Prénom
                       </th>
+
                       <th className="text-left p-2">
                         Sexe
                       </th>
+
                       <th className="text-left p-2">
                         WhatsApp
                       </th>
