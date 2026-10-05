@@ -15,6 +15,7 @@ import Students from '@/pages/dashboard/Students'
 import StudentDetail from '@/pages/dashboard/StudentDetail'
 import Evaluations from '@/pages/dashboard/Evaluations'
 import Profile from '@/pages/dashboard/Profile'
+import WhatsApp from '@/pages/dashboard/WhatsApp'
 import WhatsAppHistory from '@/pages/dashboard/WhatsAppHistory'
 import Scanner from '@/pages/dashboard/Scanner'
 
@@ -33,27 +34,55 @@ export default function App() {
     <Routes>
       <Route path="/connexion" element={<Login />} />
       <Route path="/inscription" element={<Register />} />
-      <Route path="/mot-de-passe-oublie" element={<ForgotPassword />} />
-      <Route path="/reinitialiser-mot-de-passe" element={<ResetPassword />} />
+      <Route
+        path="/mot-de-passe-oublie"
+        element={<ForgotPassword />}
+      />
+      <Route
+        path="/reinitialiser-mot-de-passe"
+        element={<ResetPassword />}
+      />
 
       <Route element={<ProtectedRoute />}>
         <Route element={<DashboardLayout />}>
           <Route path="/" element={<Dashboard />} />
 
           <Route path="/classes" element={<Classes />} />
-          <Route path="/classes/:classId" element={<ClassDetail />} />
+          <Route
+            path="/classes/:classId"
+            element={<ClassDetail />}
+          />
 
           <Route path="/eleves" element={<Students />} />
-          <Route path="/eleves/:studentId" element={<StudentDetail />} />
+          <Route
+            path="/eleves/:studentId"
+            element={<StudentDetail />}
+          />
 
-          <Route path="/evaluations" element={<Evaluations />} />
-          <Route path="/whatsapp-historique" element={<WhatsAppHistory />} />
+          <Route
+            path="/evaluations"
+            element={<Evaluations />}
+          />
+
+          <Route
+            path="/whatsapp"
+            element={<WhatsApp />}
+          />
+
+          <Route
+            path="/whatsapp-historique"
+            element={<WhatsAppHistory />}
+          />
+
           <Route path="/profil" element={<Profile />} />
           <Route path="/scanner" element={<Scanner />} />
         </Route>
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route
+        path="*"
+        element={<Navigate to="/" replace />}
+      />
     </Routes>
   )
 }
