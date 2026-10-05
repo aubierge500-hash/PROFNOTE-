@@ -5,7 +5,10 @@ import {
   Users,
   Send,
   History,
-  RefreshCw
+  RefreshCw,
+  Pencil,
+  Save,
+  X
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/AuthContext'
@@ -91,6 +94,15 @@ export default function WhatsApp() {
     useState<string[]>([])
 
   const [message, setMessage] = useState('')
+
+  const [editingStudentId, setEditingStudentId] =
+    useState<string | null>(null)
+
+  const [editingWhatsApp, setEditingWhatsApp] =
+    useState('')
+
+  const [savingStudentId, setSavingStudentId] =
+    useState<string | null>(null)
 
   const [result, setResult] = useState('')
   const [error, setError] = useState('')
@@ -188,40 +200,62 @@ export default function WhatsApp() {
     [students]
   )
 
+  const studentsWithoutWhatsApp = useMemo(
+    () =>
+      students.filter(
+        (student) =>
+          !normalizeBeninWhatsApp(
+            student.parent_whatsapp ?? ''
+          )
+      ),
+    [students]
+  )
+
   const filteredStudents = useMemo(() => {
     const searchValue = search
       .trim()
       .toLowerCase()
 
-    return studentsWithWhatsApp.filter(
-      (student) => {
-        const matchesClass =
-          classFilter === 'all' ||
-          student.class_id === classFilter
+    return students.filter((student) => {
+      const matchesClass =
+        classFilter === 'all' ||
+        student.class_id === classFilter
 
-        const fullName =
-          `${student.last_name} ${student.first_name}`
-            .toLowerCase()
+      const fullName =
+        `${student.last_name} ${student.first_name}`
+          .toLowerCase()
 
-        const matchesSearch =
-          !searchValue ||
-          fullName.includes(searchValue) ||
-          student.class_name
-            .toLowerCase()
-            .includes(searchValue) ||
-          (student.parent_whatsapp ?? '')
-            .includes(searchValue)
+      const matchesSearch =
+        !searchValue ||
+        fullName.includes(searchValue) ||
+        student.class_name
+          .toLowerCase()
+          .includes(searchValue) ||
+        (student.parent_whatsapp ?? '')
+          .includes(searchValue)
 
-        return matchesClass && matchesSearch
-      }
-    )
+      return matchesClass && matchesSearch
+    })
   }, [
-    studentsWithWhatsApp,
+    students,
     classFilter,
     search
   ])
 
   function toggleStudent(studentId: string) {
+    const student = students.find(
+      (item) => item.id === studentId
+    )
+
+    if (
+      !student ||
+      !normalizeBeninWhatsApp(
+        student.parent_whatsapp ?? ''
+      )
+    ) {
+      return
+    }
+
     setSelectedStudents((current) =>
       current.includes(studentId)
         ? current.filter(
@@ -235,18 +269,104 @@ export default function WhatsApp() {
   }
 
   function selectAll() {
-    setSelectedStudents(
-      filteredStudents.map(
-        (student) => student.id
+    const ids = filteredStudents
+      .filter((student) =>
+        normalizeBeninWhatsApp(
+          student.parent_whatsapp ?? ''
+        )
       )
-    )
+      .map((student) => student.id)
 
+    setSelectedStudents(ids)
     setResult('')
+    setError('')
   }
 
   function clearSelection() {
     setSelectedStudents([])
     setResult('')
+    setError('')
+  }
+
+  function startEditing(student: Student) {
+    setEditingStudentId(student.id)
+    setEditingWhatsApp(
+      student.parent_whatsapp ?? ''
+    )
+    setResult('')
+    setError('')
+  }
+
+  function cancelEditing() {
+    setEditingStudentId(null)
+    setEditingWhatsApp('')
+  }
+
+  async function saveWhatsApp(student: Student) {
+    if (!user) return
+
+    setError('')
+    setResult('')
+
+    const number =
+      normalizeBeninWhatsApp(
+        editingWhatsApp
+      )
+
+    if (!number) {
+      setError(
+        `Le numéro WhatsApp de ${student.first_name} ${student.last_name} est invalide.`
+      )
+      return
+    }
+
+    setSavingStudentId(student.id)
+
+    try {
+      const { error: updateError } =
+        await supabase
+          .from('students')
+          .update({
+            parent_whatsapp: number
+          })
+          .eq('id', student.id)
+          .eq('teacher_id', user.id)
+
+      if (updateError) {
+        throw updateError
+      }
+
+      setStudents((current) =>
+        current.map((item) =>
+          item.id === student.id
+            ? {
+                ...item,
+                parent_whatsapp: number
+              }
+            : item
+        )
+      )
+
+      setEditingStudentId(null)
+      setEditingWhatsApp('')
+
+      setResult(
+        `Numéro WhatsApp enregistré pour ${student.first_name} ${student.last_name}.`
+      )
+    } catch (err) {
+      console.error(
+        '[WhatsApp] Erreur enregistrement :',
+        err
+      )
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Impossible d’enregistrer le numéro WhatsApp.'
+      )
+    } finally {
+      setSavingStudentId(null)
+    }
   }
 
   function openWhatsApp(student: Student) {
@@ -426,7 +546,7 @@ export default function WhatsApp() {
           </div>
 
           <p className="text-sm text-primary-500 mt-1">
-            Communication avec les parents d’élèves
+            Gestion des contacts et communication avec les parents
           </p>
         </div>
 
@@ -458,7 +578,7 @@ export default function WhatsApp() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="card">
           <p className="text-xs text-primary-400">
             Élèves
@@ -471,11 +591,21 @@ export default function WhatsApp() {
 
         <div className="card">
           <p className="text-xs text-primary-400">
-            Parents avec WhatsApp
+            Avec WhatsApp
           </p>
 
           <p className="text-xl font-bold text-primary-800 mt-1">
             {studentsWithWhatsApp.length}
+          </p>
+        </div>
+
+        <div className="card">
+          <p className="text-xs text-primary-400">
+            Sans WhatsApp
+          </p>
+
+          <p className="text-xl font-bold text-primary-800 mt-1">
+            {studentsWithoutWhatsApp.length}
           </p>
         </div>
 
@@ -558,70 +688,161 @@ export default function WhatsApp() {
           />
 
           <h2 className="font-semibold text-primary-800">
-            Parents disponibles
+            Élèves et contacts parents
           </h2>
         </div>
 
         {filteredStudents.length === 0 ? (
           <p className="text-sm text-primary-400">
-            Aucun parent avec un numéro WhatsApp
-            correspondant aux critères.
+            Aucun élève correspondant aux critères.
           </p>
         ) : (
           <div className="space-y-2">
             {filteredStudents.map((student) => {
+              const hasWhatsApp =
+                Boolean(
+                  normalizeBeninWhatsApp(
+                    student.parent_whatsapp ?? ''
+                  )
+                )
+
               const selected =
                 selectedStudents.includes(
                   student.id
                 )
 
+              const editing =
+                editingStudentId ===
+                student.id
+
               return (
                 <div
                   key={student.id}
-                  className={`border rounded-lg p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3 ${
+                  className={`border rounded-lg p-3 ${
                     selected
                       ? 'border-primary-500 bg-primary-50'
                       : ''
                   }`}
                 >
-                  <div className="flex items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      onChange={() =>
-                        toggleStudent(
-                          student.id
-                        )
-                      }
-                      className="mt-1"
-                    />
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        disabled={!hasWhatsApp}
+                        onChange={() =>
+                          toggleStudent(
+                            student.id
+                          )
+                        }
+                        className="mt-1"
+                      />
 
-                    <div>
-                      <p className="font-medium text-primary-800">
-                        {student.last_name}{' '}
-                        {student.first_name}
-                      </p>
+                      <div>
+                        <p className="font-medium text-primary-800">
+                          {student.last_name}{' '}
+                          {student.first_name}
+                        </p>
 
-                      <p className="text-xs text-primary-400">
-                        {student.class_name}
-                      </p>
+                        <p className="text-xs text-primary-400">
+                          {student.class_name}
+                        </p>
 
-                      <p className="text-sm text-primary-600 mt-1">
-                        {student.parent_whatsapp}
-                      </p>
+                        {!editing && (
+                          <>
+                            {hasWhatsApp ? (
+                              <p className="text-sm text-primary-600 mt-1">
+                                {student.parent_whatsapp}
+                              </p>
+                            ) : (
+                              <p className="text-sm text-red-500 mt-1">
+                                Aucun numéro WhatsApp
+                              </p>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {!editing && hasWhatsApp && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openWhatsApp(student)
+                          }
+                          className="btn-primary flex items-center justify-center gap-2 text-sm"
+                        >
+                          <MessageCircle
+                            size={16}
+                          />
+                          Message
+                        </button>
+                      )}
+
+                      {!editing && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            startEditing(student)
+                          }
+                          className="btn-secondary flex items-center justify-center gap-2 text-sm"
+                        >
+                          <Pencil size={15} />
+                          {hasWhatsApp
+                            ? 'Modifier'
+                            : 'Ajouter'}
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      openWhatsApp(student)
-                    }
-                    className="btn-primary flex items-center justify-center gap-2 text-sm"
-                  >
-                    <MessageCircle size={16} />
-                    Message
-                  </button>
+                  {editing && (
+                    <div className="mt-3 flex flex-col md:flex-row gap-2">
+                      <input
+                        type="tel"
+                        value={editingWhatsApp}
+                        onChange={(event) =>
+                          setEditingWhatsApp(
+                            event.target.value
+                          )
+                        }
+                        placeholder="Ex. 97123456 ou +22997123456"
+                        className="flex-1 border rounded-lg px-3 py-2.5 text-sm"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void saveWhatsApp(
+                            student
+                          )
+                        }
+                        disabled={
+                          savingStudentId ===
+                          student.id
+                        }
+                        className="btn-primary flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+                      >
+                        <Save size={15} />
+                        {savingStudentId ===
+                        student.id
+                          ? 'Enregistrement…'
+                          : 'Enregistrer'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={
+                          cancelEditing
+                        }
+                        className="btn-secondary flex items-center justify-center gap-2 text-sm"
+                      >
+                        <X size={15} />
+                        Annuler
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -636,8 +857,8 @@ export default function WhatsApp() {
           </h2>
 
           <p className="text-xs text-primary-400 mt-1">
-            Le prénom et le nom de l’élève seront
-            automatiquement ajoutés au message.
+            Le prénom, le nom et la classe de l’élève
+            seront automatiquement ajoutés.
           </p>
         </div>
 
