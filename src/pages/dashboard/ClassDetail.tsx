@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ChangeEvent
 } from 'react'
@@ -165,6 +166,15 @@ export default function ClassDetail() {
 
   const [importing, setImporting] =
     useState(false)
+
+  const [readingFile, setReadingFile] =
+    useState(false)
+
+  const [importStatus, setImportStatus] =
+    useState('')
+
+  const fileInputRef =
+    useRef<HTMLInputElement | null>(null)
 
   const [deletingStudent, setDeletingStudent] =
     useState<string | null>(null)
@@ -501,32 +511,57 @@ export default function ClassDetail() {
   async function handleFileSelect(
     event: ChangeEvent<HTMLInputElement>
   ) {
-    const file =
-      event.target.files?.[0]
+    // Conserver la référence du fichier avant de réinitialiser le champ :
+    // cela permet de sélectionner deux fois de suite le même fichier.
+    const input = event.currentTarget
+    const file = input.files?.[0] ?? null
+    input.value = ''
 
-    event.target.value = ''
-
-    if (!file) return
+    if (!file) {
+      setImportStatus('')
+      return
+    }
 
     setImportError('')
     setImportResult(null)
+    setImportStatus(`Lecture du fichier « ${file.name} »…`)
+    setReadingFile(true)
 
     try {
-      const result =
-        await parseStudentsFile(file)
+      const result = await parseStudentsFile(file)
 
       setImportResult(result)
+
+      if (!result || !Array.isArray(result.rows)) {
+        throw new Error(
+          'Le lecteur de fichier n’a pas retourné de liste exploitable.'
+        )
+      }
+
+      if (result.rows.length === 0) {
+        setImportStatus(`Fichier lu : ${file.name}`)
+        setImportError(
+          'Aucun élève détecté dans ce fichier. Vérifiez que le document contient les colonnes Nom et Prénom, puis réessayez.'
+        )
+      } else {
+        setImportStatus(
+          `Fichier lu : ${file.name} — ${result.rows.length} ligne(s) détectée(s).`
+        )
+      }
     } catch (error) {
       console.error(
         '[ClassDetail] Erreur import fichier :',
         error
       )
-
+      setImportResult(null)
+      setImportStatus('')
       setImportError(
         error instanceof Error
           ? error.message
-          : 'Impossible de lire ce fichier.'
+          : 'Impossible de lire ce fichier. Vérifiez son format et réessayez.'
       )
+    } finally {
+      setReadingFile(false)
     }
   }
 
@@ -1765,18 +1800,27 @@ export default function ClassDetail() {
                 Coller une liste
               </button>
 
-              <label className="btn-secondary flex items-center gap-1 text-sm cursor-pointer">
+              <button
+                type="button"
+                onClick={() => {
+                  setImportError('')
+                  setImportStatus('')
+                  fileInputRef.current?.click()
+                }}
+                disabled={readingFile}
+                className="btn-secondary flex items-center gap-1 text-sm disabled:opacity-60"
+              >
                 <Upload size={15} />
-                Importer
-                <input
-                  type="file"
-                  className="hidden"
-                  accept=".csv,.xlsx,.xls,.docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  onChange={
-                    handleFileSelect
-                  }
-                />
-              </label>
+                {readingFile ? 'Lecture…' : 'Importer un fichier'}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="sr-only"
+                accept=".csv,.xlsx,.xls,.docx,.pdf,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf"
+                onChange={handleFileSelect}
+                aria-label="Choisir un fichier contenant la liste des élèves"
+              />
 
               <PhotoImportButton
                 classId={classId!}
@@ -2042,6 +2086,18 @@ export default function ClassDetail() {
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ÉTAT DE LECTURE DU FICHIER */}
+
+          {importStatus && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="mb-4 rounded-lg border border-primary-100 bg-primary-50 p-3 text-sm text-primary-700"
+            >
+              {importStatus}
             </div>
           )}
 
