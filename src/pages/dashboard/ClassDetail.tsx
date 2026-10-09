@@ -322,51 +322,285 @@ export default function ClassDetail() {
       console.error(
         '[ClassDetail] Erreur ajout élève :',
         error
-      )
-
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Impossible d'ajouter l'élève."
-      )
-    }
-  }
-
-  /* =========================
-     COLLAGE D'UNE LISTE
-     ========================= */
-
+      
   function parsePastedStudents(
     text: string
   ): ImportedRow[] {
     const lines = text
+      .replace(/\u00a0/g, ' ')
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean)
 
     const rows: ImportedRow[] = []
 
-    for (const line of lines) {
-      let columns: string[] = []
+    for (const originalLine of lines) {
+      const line = originalLine.replace(
+        /^\d+[\s.)-]+/,
+        ''
+      ).trim()
 
-      if (line.includes('\t')) {
-        columns = line.split('\t')
-      } else if (line.includes(';')) {
-        columns = line.split(';')
-      } else if (line.includes(',')) {
-        columns = line.split(',')
+      if (!line) continue
+
+      const normalizedHeader = line
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+
+      if (
+        normalizedHeader.includes('nom') &&
+        normalizedHeader.includes('prenom')
+      ) {
+        continue
+      }
+
+      let columns: string[]
+
+      if (originalLine.includes('\t')) {
+        columns = originalLine.split('\t')
+      } else if (originalLine.includes(';')) {
+        columns = originalLine.split(';')
+      } else if (originalLine.includes(',')) {
+        columns = originalLine.split(',')
       } else {
         columns = line.split(/\s+/)
       }
 
-      columns = columns
+      columns = columns.map((value) => value.trim())
+
+      // Retire les cellules vides uniquement en fin de ligne.
+      while (
+        columns.length > 0 &&
+        !columns[columns.length - 1]
+      ) {
+        columns.pop()
+      }
+
+      if (columns.length < 2) continue
+
+      let gender = ''
+      let whatsapp = ''
+
+      const genderIndex = columns.findIndex(
+        (value) => {
+          const normalized = value
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim()
+
+          return [
+            'f',
+            'fille',
+            'feminin',
+            'female',
+            'm',
+            'garcon',
+            'masculin',
+            'male'
+          ].includes(normalized)
+        }
+      )
+
+      if (genderIndex >= 0) {
+        const value = columns[genderIndex]
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .trim()
+
+        gender = [
+          'f',
+          'fille',
+          'feminin',
+          'female'
+        ].includes(value)
+          ? 'F'
+          : 'M'
+
+        columns.splice(genderIndex, 1)
+      }
+
+      const phoneIndex = columns.findIndex(
+        (value) => {
+          const digits = value.replace(/\D/g, '')
+          return (
+            digits.length === 8 ||
+            digits.length === 10 ||
+            (digits.startsWith('229') &&
+              digits.length >= 11)
+          )
+        }
+      )
+
+      if (phoneIndex >= 0) {
+        whatsapp = columns[phoneIndex]
+        columns.splice(phoneIndex, 1)
+      }
+
+      const nonEmptyColumns = columns
         .map((value) => value.trim())
         .filter(Boolean)
 
-      if (columns.length < 2) {
+      if (nonEmptyColumns.length < 2) continue
+
+      const lastName = nonEmptyColumns[0]
+      const firstName = nonEmptyColumns
+        .slice(1)
+        .join(' ')
+
+      if (!lastName || !firstName) continue
+
+      rows.push({
+        Nom: lastName,
+        Prenom: firstName,
+        Sexe: gender,
+        WhatsApp: whatsapp
+      })
+    }
+
+    return rows
+  }
+
+  function parsePastedStudents(
+    text: string
+  ): ImportedRow[] {
+    const lines = text
+      .replace(/\u00a0/g, ' ')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+
+    const rows: ImportedRow[] = []
+
+    for (const originalLine of lines) {
+      const line = originalLine.replace(
+        /^\d+[\s.)-]+/,
+        ''
+      ).trim()
+
+      if (!line) continue
+
+      const normalizedHeader = line
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+
+      if (
+        normalizedHeader.includes('nom') &&
+        normalizedHeader.includes('prenom')
+      ) {
         continue
       }
 
+      let columns: string[]
+
+      if (originalLine.includes('\t')) {
+        columns = originalLine.split('\t')
+      } else if (originalLine.includes(';')) {
+        columns = originalLine.split(';')
+      } else if (originalLine.includes(',')) {
+        columns = originalLine.split(',')
+      } else {
+        columns = line.split(/\s+/)
+      }
+
+      columns = columns.map((value) => value.trim())
+
+      // Retire les cellules vides uniquement en fin de ligne.
+      while (
+        columns.length > 0 &&
+        !columns[columns.length - 1]
+      ) {
+        columns.pop()
+      }
+
+      if (columns.length < 2) continue
+
+      let gender = ''
+      let whatsapp = ''
+
+      const genderIndex = columns.findIndex(
+        (value) => {
+          const normalized = value
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim()
+
+          return [
+            'f',
+            'fille',
+            'feminin',
+            'female',
+            'm',
+            'garcon',
+            'masculin',
+            'male'
+          ].includes(normalized)
+        }
+      )
+
+      if (genderIndex >= 0) {
+        const value = columns[genderIndex]
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .trim()
+
+        gender = [
+          'f',
+          'fille',
+          'feminin',
+          'female'
+        ].includes(value)
+          ? 'F'
+          : 'M'
+
+        columns.splice(genderIndex, 1)
+      }
+
+      const phoneIndex = columns.findIndex(
+        (value) => {
+          const digits = value.replace(/\D/g, '')
+          return (
+            digits.length === 8 ||
+            digits.length === 10 ||
+            (digits.startsWith('229') &&
+              digits.length >= 11)
+          )
+        }
+      )
+
+      if (phoneIndex >= 0) {
+        whatsapp = columns[phoneIndex]
+        columns.splice(phoneIndex, 1)
+      }
+
+      const nonEmptyColumns = columns
+        .map((value) => value.trim())
+        .filter(Boolean)
+
+      if (nonEmptyColumns.length < 2) continue
+
+      const lastName = nonEmptyColumns[0]
+      const firstName = nonEmptyColumns
+        .slice(1)
+        .join(' ')
+
+      if (!lastName || !firstName) continue
+
+      rows.push({
+        Nom: lastName,
+        Prenom: firstName,
+        Sexe: gender,
+        WhatsApp: whatsapp
+      })
+    }
+
+    return rows
+      }
+      
       const first = columns[0]
       const second = columns[1]
       const third = columns[2] ?? ''
