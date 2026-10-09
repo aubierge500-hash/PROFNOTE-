@@ -4,7 +4,6 @@ import Papa from 'papaparse'
 import mammoth from 'mammoth'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-
 import type { TextItem } from 'pdfjs-dist/types/src/display/api'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker
@@ -20,10 +19,12 @@ export interface ImportedRow {
 
 export interface ImportResult {
   rows: ImportedRow[]
-  format: 'excel' | 'word' | 'pdf'
+  format: 'csv' | 'excel' | 'word' | 'pdf'
   headers: string[]
   warnings: string[]
 }
+
+type SupportedFormat = 'csv' | 'excel' | 'word' | 'pdf'
 
 const COLUMN_ALIASES = {
   nom: [
@@ -34,9 +35,8 @@ const COLUMN_ALIASES = {
     'Nom eleve',
     'Lastname',
     'Last name',
-    'Surname'
+    'Surname',
   ],
-
   prenom: [
     'Prenom',
     'Prénom',
@@ -44,22 +44,10 @@ const COLUMN_ALIASES = {
     'Prénom élève',
     'Prenom eleve',
     'First name',
-    'Firstname'
+    'Firstname',
   ],
-
-  sexe: [
-    'Sexe',
-    'Genre',
-    'Sex',
-    'Gender'
-  ],
-
-  classe: [
-    'Classe',
-    'Class',
-    'Niveau'
-  ],
-
+  sexe: ['Sexe', 'Genre', 'Sex', 'Gender'],
+  classe: ['Classe', 'Class', 'Niveau'],
   whatsapp: [
     'WhatsApp',
     'Whatsapp',
@@ -71,9 +59,8 @@ const COLUMN_ALIASES = {
     'Tel',
     'Phone',
     'Contact',
-    'Contact parent'
+    'Contact parent',
   ],
-
   observation: [
     'Observation',
     'Observations',
@@ -81,12 +68,13 @@ const COLUMN_ALIASES = {
     'Remarques',
     'Note',
     'Commentaire',
-    'Comment'
-  ]
+    'Comment',
+  ],
 }
 
 function normalizeHeader(value: unknown): string {
   return String(value ?? '')
+    .replace(/^\uFEFF/, '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
@@ -95,58 +83,42 @@ function normalizeHeader(value: unknown): string {
 }
 
 function normalizeValue(value: unknown): string {
-  if (value === null || value === undefined) {
-    return ''
-  }
+  if (value === null || value === undefined) return ''
 
   return String(value)
+    .replace(/^\uFEFF/, '')
     .replace(/\u00a0/g, ' ')
     .trim()
 }
 
-function findColumnIndex(
-  headers: string[],
-  aliases: string[]
-): number {
+function findColumnIndex(headers: string[], aliases: string[]): number {
   const normalizedAliases = aliases.map(normalizeHeader)
 
   return headers.findIndex((header) =>
-    normalizedAliases.includes(normalizeHeader(header))
+    normalizedAliases.includes(normalizeHeader(header)),
   )
 }
 
-/**
- * Détecte la ligne des en-têtes.
- * Les colonnes Nom et Prénom sont obligatoires :
- * une ligne contenant seulement l'une d'elles ne doit
- * jamais être considérée comme la ligne des en-têtes.
- */
 function findHeaderRow(matrix: string[][]): number {
-  const limit = Math.min(matrix.length, 15)
-
+  const limit = Math.min(matrix.length, 20)
   let bestIndex = -1
   let bestScore = 0
 
   for (let i = 0; i < limit; i++) {
     const row = matrix[i].map(normalizeValue)
 
-    const hasNom =
-      findColumnIndex(row, COLUMN_ALIASES.nom) >= 0
+    const nomIndex = findColumnIndex(row, COLUMN_ALIASES.nom)
+    const prenomIndex = findColumnIndex(row, COLUMN_ALIASES.prenom)
 
-    const hasPrenom =
-      findColumnIndex(row, COLUMN_ALIASES.prenom) >= 0
-
-    if (!hasNom || !hasPrenom) {
-      continue
-    }
+    if (nomIndex < 0 || prenomIndex < 0) continue
 
     const score = [
-      findColumnIndex(row, COLUMN_ALIASES.nom),
-      findColumnIndex(row, COLUMN_ALIASES.prenom),
+      nomIndex,
+      prenomIndex,
       findColumnIndex(row, COLUMN_ALIASES.sexe),
       findColumnIndex(row, COLUMN_ALIASES.classe),
       findColumnIndex(row, COLUMN_ALIASES.whatsapp),
-      findColumnIndex(row, COLUMN_ALIASES.observation)
+      findColumnIndex(row, COLUMN_ALIASES.observation),
     ].filter((index) => index >= 0).length
 
     if (score > bestScore) {
@@ -158,295 +130,195 @@ function findHeaderRow(matrix: string[][]): number {
   return bestIndex
 }
 
+function cleanRows(rows: ImportedRow[]): ImportedRow[] {
+  return rows.filter(
+    (row) => Boolean(row.Nom?.trim() || row.Prenom?.trim()),
+  )
+}
+
 function mapMatrixRows(
   matrix: string[][],
-  headerRowIndex: number
-): {
-  rows: ImportedRow[]
-  headers: string[]
-} {
+  headerRowIndex: number,
+): { rows: ImportedRow[]; headers: string[] } {
   const headers = (matrix[headerRowIndex] ?? []).map(normalizeValue)
 
-  const nomIndex = findColumnIndex(
-    headers,
-    COLUMN_ALIASES.nom
-  )
-
-  const prenomIndex = findColumnIndex(
-    headers,
-    COLUMN_ALIASES.prenom
-  )
-
-  const sexeIndex = findColumnIndex(
-    headers,
-    COLUMN_ALIASES.sexe
-  )
-
-  const classeIndex = findColumnIndex(
-    headers,
-    COLUMN_ALIASES.classe
-  )
-
-  const whatsappIndex = findColumnIndex(
-    headers,
-    COLUMN_ALIASES.whatsapp
-  )
-
+  const nomIndex = findColumnIndex(headers, COLUMN_ALIASES.nom)
+  const prenomIndex = findColumnIndex(headers, COLUMN_ALIASES.prenom)
+  const sexeIndex = findColumnIndex(headers, COLUMN_ALIASES.sexe)
+  const classeIndex = findColumnIndex(headers, COLUMN_ALIASES.classe)
+  const whatsappIndex = findColumnIndex(headers, COLUMN_ALIASES.whatsapp)
   const observationIndex = findColumnIndex(
     headers,
-    COLUMN_ALIASES.observation
+    COLUMN_ALIASES.observation,
   )
 
   if (nomIndex < 0 || prenomIndex < 0) {
     throw new Error(
-      'Les colonnes « Nom » et « Prénom » sont obligatoires et doivent être présentes dans le fichier.'
+      'Les colonnes « Nom » et « Prénom » sont obligatoires. Vérifiez les en-têtes du fichier.',
     )
   }
 
-  const rows = matrix
-    .slice(headerRowIndex + 1)
-    .map((cells) => ({
-      Nom: normalizeValue(cells[nomIndex]),
+  const rows = matrix.slice(headerRowIndex + 1).map((cells) => ({
+    Nom: normalizeValue(cells[nomIndex]),
+    Prenom: normalizeValue(cells[prenomIndex]),
+    Sexe: sexeIndex >= 0 ? normalizeValue(cells[sexeIndex]) : '',
+    Classe: classeIndex >= 0 ? normalizeValue(cells[classeIndex]) : '',
+    WhatsApp:
+      whatsappIndex >= 0 ? normalizeValue(cells[whatsappIndex]) : '',
+    Observation:
+      observationIndex >= 0
+        ? normalizeValue(cells[observationIndex])
+        : '',
+  }))
 
-      Prenom: normalizeValue(
-        cells[prenomIndex]
-      ),
-
-      Sexe:
-        sexeIndex >= 0
-          ? normalizeValue(cells[sexeIndex])
-          : '',
-
-      Classe:
-        classeIndex >= 0
-          ? normalizeValue(cells[classeIndex])
-          : '',
-
-      WhatsApp:
-        whatsappIndex >= 0
-          ? normalizeValue(cells[whatsappIndex])
-          : '',
-
-      Observation:
-        observationIndex >= 0
-          ? normalizeValue(cells[observationIndex])
-          : ''
-    }))
-
-  return {
-    rows: cleanRows(rows),
-    headers
-  }
+  return { rows: cleanRows(rows), headers }
 }
 
-async function parseExcel(
-  file: File
-): Promise<ImportResult> {
+function buildWarnings(headerRowIndex: number): string[] {
+  return headerRowIndex > 0
+    ? [`Les en-têtes ont été détectés à la ligne ${headerRowIndex + 1}.`]
+    : []
+}
+
+async function parseExcel(file: File): Promise<ImportResult> {
   const buffer = await file.arrayBuffer()
-
-  const workbook = XLSX.read(buffer, {
-    type: 'array',
-    raw: false
-  })
-
-  const firstSheetName =
-    workbook.SheetNames[0]
+  const workbook = XLSX.read(buffer, { type: 'array', raw: false })
+  const firstSheetName = workbook.SheetNames[0]
 
   if (!firstSheetName) {
-    throw new Error(
-      'Le fichier Excel ne contient aucune feuille.'
-    )
+    throw new Error('Le fichier Excel ne contient aucune feuille.')
   }
 
-  const worksheet =
-    workbook.Sheets[firstSheetName]
-
-  const matrix =
-    XLSX.utils
-      .sheet_to_json<unknown[]>(
-        worksheet,
-        {
-          header: 1,
-          defval: '',
-          raw: false
-        }
-      )
-      .map((row) =>
-        row.map(normalizeValue)
-      )
+  const worksheet = workbook.Sheets[firstSheetName]
+  const matrix = XLSX.utils
+    .sheet_to_json<unknown[]>(worksheet, {
+      header: 1,
+      defval: '',
+      raw: false,
+    })
+    .map((row) => row.map(normalizeValue))
 
   if (matrix.length === 0) {
-    throw new Error(
-      'Aucune donnée trouvée dans le fichier Excel.'
-    )
+    throw new Error('Aucune donnée trouvée dans le fichier Excel.')
   }
 
-  const headerRowIndex =
-    findHeaderRow(matrix)
+  const headerRowIndex = findHeaderRow(matrix)
 
   if (headerRowIndex < 0) {
     throw new Error(
-      'Impossible de détecter la ligne d’en-têtes. Vérifiez que le fichier contient les colonnes Nom et Prénom.'
+      'Colonnes « Nom » et « Prénom » introuvables dans le fichier Excel.',
     )
   }
 
-  const mapped =
-    mapMatrixRows(
-      matrix,
-      headerRowIndex
+  const mapped = mapMatrixRows(matrix, headerRowIndex)
+
+  if (mapped.rows.length === 0) {
+    throw new Error(
+      'Les en-têtes Excel ont été trouvés, mais aucun élève exploitable ne suit.',
     )
+  }
 
   return {
     rows: mapped.rows,
     format: 'excel',
     headers: mapped.headers,
-    warnings:
-      headerRowIndex > 0
-        ? [
-            `Les en-têtes ont été détectés à la ligne ${
-              headerRowIndex + 1
-            }.`
-          ]
-        : []
+    warnings: buildWarnings(headerRowIndex),
   }
 }
 
-async function parseCsv(
-  file: File
-): Promise<ImportResult> {
-  return new Promise(
-    (resolve, reject) => {
-      Papa.parse<string[]>(
-        file,
-        {
-          header: false,
-          skipEmptyLines: true,
+async function parseCsv(file: File): Promise<ImportResult> {
+  return new Promise((resolve, reject) => {
+    Papa.parse<string[]>(file, {
+      header: false,
+      skipEmptyLines: 'greedy',
+      delimiter: '',
+      complete: (result) => {
+        try {
+          const matrix = result.data.map((row) =>
+            row.map(normalizeValue),
+          )
 
-          complete: (result) => {
-            try {
-              const matrix =
-                result.data.map((row) =>
-                  row.map(normalizeValue)
-                )
+          if (matrix.length === 0) {
+            throw new Error('Le fichier CSV est vide.')
+          }
 
-              if (matrix.length === 0) {
-                throw new Error(
-                  'Le fichier CSV est vide.'
-                )
-              }
+          const headerRowIndex = findHeaderRow(matrix)
 
-              const headerRowIndex =
-                findHeaderRow(matrix)
-
-              if (headerRowIndex < 0) {
-                throw new Error(
-                  'Impossible de détecter les colonnes Nom et Prénom dans le fichier CSV.'
-                )
-              }
-
-              const mapped =
-                mapMatrixRows(
-                  matrix,
-                  headerRowIndex
-                )
-
-              resolve({
-                rows: mapped.rows,
-                format: 'excel',
-                headers: mapped.headers,
-                warnings:
-                  headerRowIndex > 0
-                    ? [
-                        `Les en-têtes ont été détectés à la ligne ${
-                          headerRowIndex + 1
-                        }.`
-                      ]
-                    : []
-              })
-            } catch (error) {
-              reject(error)
-            }
-          },
-
-          error: (error) =>
-            reject(
-              new Error(
-                `Lecture CSV impossible : ${error.message}`
-              )
+          if (headerRowIndex < 0) {
+            throw new Error(
+              'Colonnes « Nom » et « Prénom » introuvables dans le CSV. Vérifiez la première ligne et le séparateur.',
             )
+          }
+
+          const mapped = mapMatrixRows(matrix, headerRowIndex)
+
+          if (mapped.rows.length === 0) {
+            throw new Error(
+              'Les en-têtes CSV ont été trouvés, mais aucun élève exploitable ne suit.',
+            )
+          }
+
+          resolve({
+            rows: mapped.rows,
+            format: 'csv',
+            headers: mapped.headers,
+            warnings: [
+              ...buildWarnings(headerRowIndex),
+              ...(result.errors.length
+                ? ['Le CSV contient certaines lignes mal formées. Vérifiez l’aperçu avant de valider.']
+                : []),
+            ],
+          })
+        } catch (error) {
+          reject(
+            error instanceof Error
+              ? error
+              : new Error('Impossible de lire le fichier CSV.'),
+          )
         }
-      )
-    }
-  )
+      },
+      error: (error) => {
+        reject(new Error(`Lecture CSV impossible : ${error.message}`))
+      },
+    })
+  })
 }
 
-async function parseWord(
-  file: File
-): Promise<ImportResult> {
-  const arrayBuffer =
-    await file.arrayBuffer()
+async function parseWord(file: File): Promise<ImportResult> {
+  const arrayBuffer = await file.arrayBuffer()
+  const result = await mammoth.convertToHtml({ arrayBuffer })
+  const document = new DOMParser().parseFromString(
+    result.value,
+    'text/html',
+  )
 
-  const result =
-    await mammoth.convertToHtml({
-      arrayBuffer
-    })
-
-  const document =
-    new DOMParser().parseFromString(
-      result.value,
-      'text/html'
-    )
-
-  const tables =
-    Array.from(
-      document.querySelectorAll('table')
-    )
-
-  const warnings: string[] = []
+  const tables = Array.from(document.querySelectorAll('table'))
 
   if (tables.length > 0) {
-    const tableRows =
-      Array.from(
-        tables[0].querySelectorAll('tr')
-      )
-
-    const matrix =
-      tableRows.map((tr) =>
-        Array.from(
-          tr.querySelectorAll('th, td')
-        ).map((cell) =>
-          normalizeValue(
-            cell.textContent
-          )
-        )
-      )
+    const matrix = Array.from(tables[0].querySelectorAll('tr')).map(
+      (tr) =>
+        Array.from(tr.querySelectorAll('th, td')).map((cell) =>
+          normalizeValue(cell.textContent),
+        ),
+    )
 
     if (matrix.length === 0) {
-      throw new Error(
-        'Le tableau Word ne contient aucune ligne.'
-      )
+      throw new Error('Le tableau Word ne contient aucune ligne.')
     }
 
-    const headerRowIndex =
-      findHeaderRow(matrix)
+    const headerRowIndex = findHeaderRow(matrix)
 
     if (headerRowIndex < 0) {
       throw new Error(
-        'Impossible de détecter les colonnes Nom et Prénom dans le tableau Word.'
+        'Colonnes « Nom » et « Prénom » introuvables dans le tableau Word.',
       )
     }
 
-    const mapped =
-      mapMatrixRows(
-        matrix,
-        headerRowIndex
-      )
+    const mapped = mapMatrixRows(matrix, headerRowIndex)
 
-    if (headerRowIndex > 0) {
-      warnings.push(
-        `Les en-têtes ont été détectés à la ligne ${
-          headerRowIndex + 1
-        } du tableau Word.`
+    if (mapped.rows.length === 0) {
+      throw new Error(
+        'Le tableau Word a été lu, mais aucun élève exploitable n’a été détecté.',
       )
     }
 
@@ -454,478 +326,374 @@ async function parseWord(
       rows: mapped.rows,
       format: 'word',
       headers: mapped.headers,
-      warnings
+      warnings: buildWarnings(headerRowIndex),
     }
   }
 
-  const text =
-    document.body.textContent ?? ''
-
-  const lines =
-    text
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
+  const text = document.body.textContent ?? ''
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
 
   if (lines.length === 0) {
+    throw new Error('Aucune donnée exploitable trouvée dans le document Word.')
+  }
+
+  const rows = cleanRows(parseTextLines(lines))
+
+  if (rows.length === 0) {
     throw new Error(
-      'Aucune donnée exploitable trouvée dans le document Word.'
+      'Aucun élève détecté dans le document Word. Présentez les données en tableau avec les colonnes Nom et Prénom.',
     )
   }
 
-  warnings.push(
-    'Le document Word ne contient pas de tableau. Les données ont été interprétées ligne par ligne.'
-  )
-
   return {
-    rows: cleanRows(
-      parseTextLines(lines)
-    ),
+    rows,
     format: 'word',
     headers: [],
-    warnings
+    warnings: [
+      'Le document Word ne contient pas de tableau reconnu. Les lignes ont été interprétées automatiquement ; vérifiez l’aperçu.',
+    ],
   }
 }
 
-async function parsePDF(
-  file: File
-): Promise<ImportResult> {
-  const buffer =
-    await file.arrayBuffer()
-
-  const pdf =
-    await pdfjsLib.getDocument({
-      data: buffer
-    }).promise
-
+async function parsePDF(file: File): Promise<ImportResult> {
+  const buffer = await file.arrayBuffer()
+  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise
   const lines: string[] = []
 
-  for (
-    let pageNumber = 1;
-    pageNumber <= pdf.numPages;
-    pageNumber++
-  ) {
-    const page =
-      await pdf.getPage(pageNumber)
-
-    const content =
-      await page.getTextContent()
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+    const page = await pdf.getPage(pageNumber)
+    const content = await page.getTextContent()
 
     const items = content.items
       .filter(
         (item): item is TextItem =>
-          'str' in item &&
-          typeof item.str === 'string'
+          'str' in item && typeof item.str === 'string',
       )
       .map((item) => ({
         text: String(item.str ?? ''),
         x: Number(item.transform?.[4] ?? 0),
         y: Number(item.transform?.[5] ?? 0),
-        width: Number(item.width ?? 0)
+        width: Number(item.width ?? 0),
       }))
       .filter((item) => item.text.trim())
 
-    const grouped =
-      new Map<
-        number,
-        {
-          x: number
-          text: string
-          width: number
-        }[]
-      >()
+    const grouped = new Map<
+      number,
+      { x: number; text: string; width: number }[]
+    >()
 
     for (const item of items) {
-      const y =
-        Math.round(item.y / 3) * 3
+      const y = Math.round(item.y / 3) * 3
+      if (!grouped.has(y)) grouped.set(y, [])
 
-      if (!grouped.has(y)) {
-        grouped.set(y, [])
-      }
-
-      grouped
-        .get(y)!
-        .push({
-          x: item.x,
-          text: item.text,
-          width: item.width
-        })
+      grouped.get(y)!.push({
+        x: item.x,
+        text: item.text,
+        width: item.width,
+      })
     }
 
-    const pageLines =
-      Array.from(
-        grouped.entries()
-      )
-        .sort(
-          (a, b) => b[0] - a[0]
-        )
-        .map(([, values]) => {
-          const sorted =
-            values.sort(
-              (a, b) => a.x - b.x
-            )
+    const pageLines = Array.from(grouped.entries())
+      .sort((a, b) => b[0] - a[0])
+      .map(([, values]) => {
+        const sorted = values.sort((a, b) => a.x - b.x)
+        const cells: string[] = []
+        let current = ''
+        let previousRight: number | null = null
 
-          const cells: string[] = []
+        for (const value of sorted) {
+          const gap =
+            previousRight === null ? 0 : value.x - previousRight
 
-          let current = ''
-
-          let previousRight: number | null =
-            null
-
-          for (const value of sorted) {
-            const gap =
-              previousRight === null
-                ? 0
-                : value.x - previousRight
-
-            if (
-              current &&
-              gap > 18
-            ) {
-              cells.push(
-                current.trim()
-              )
-
-              current = ''
-            }
-
-            current = current
-              ? `${current} ${value.text}`
-              : value.text
-
-            previousRight =
-              value.x +
-              Math.max(
-                value.width,
-                value.text.length * 4
-              )
+          if (current && gap > 18) {
+            cells.push(current.trim())
+            current = ''
           }
 
-          if (current.trim()) {
-            cells.push(
-              current.trim()
-            )
-          }
+          current = current ? `${current} ${value.text}` : value.text
+          previousRight =
+            value.x + Math.max(value.width, value.text.length * 4)
+        }
 
-          return cells.join('\t')
-        })
-        .filter(Boolean)
+        if (current.trim()) cells.push(current.trim())
+        return cells.join('\t')
+      })
+      .filter(Boolean)
 
-    lines.push(
-      ...pageLines
-    )
+    lines.push(...pageLines)
   }
 
   if (lines.length === 0) {
     throw new Error(
-      'Aucun texte exploitable n’a été trouvé dans le PDF. Il peut s’agir d’un PDF scanné.'
+      'Aucun texte exploitable n’a été trouvé dans le PDF. Si le PDF est scanné comme une image, il nécessite une reconnaissance OCR.',
     )
   }
 
-  const rows =
-    parseTextLines(lines)
+  const rows = cleanRows(parseTextLines(lines))
 
   if (rows.length === 0) {
     throw new Error(
-      'Le PDF a été lu, mais aucune liste d’élèves exploitable n’a été détectée.'
+      'Le PDF a été ouvert, mais aucune liste d’élèves exploitable n’a été détectée. Vérifiez la présence des noms et prénoms dans le document.',
     )
   }
 
   return {
-    rows: cleanRows(rows),
+    rows,
     format: 'pdf',
     headers: [],
     warnings: [
-      'Le PDF a été analysé à partir de son texte. Un PDF scanné nécessitera une étape OCR.'
-    ]
+      'Le texte du PDF a été analysé. Un PDF composé uniquement de pages scannées nécessite une étape OCR.',
+    ],
   }
 }
 
 function isWhatsAppValue(value: string): boolean {
   const digits = value.replace(/\D/g, '')
 
-  if (!digits) {
-    return false
-  }
-
-  if (
+  return (
     digits.length === 8 ||
     digits.length === 10 ||
     (digits.startsWith('229') && digits.length >= 11)
-  ) {
-    return true
-  }
-
-  return false
+  )
 }
 
 function normalizeGenderValue(value: string): string {
-  const normalized =
-    normalizeHeader(value)
+  const normalized = normalizeHeader(value)
 
-  if (
-    ['f', 'feminin', 'female', 'fille']
-      .includes(normalized)
-  ) {
+  if (['f', 'feminin', 'female', 'fille'].includes(normalized)) {
     return 'F'
   }
 
-  if (
-    ['m', 'masculin', 'male', 'garcon']
-      .includes(normalized)
-  ) {
+  if (['m', 'masculin', 'male', 'garcon'].includes(normalized)) {
     return 'M'
   }
 
   return ''
 }
 
-function parseTextColumns(
-  originalLine: string
-): string[] {
+function parseTextColumns(originalLine: string): string[] {
   if (originalLine.includes('\t')) {
-    return originalLine
-      .split(/\t+/)
-      .map((value) => value.trim())
-      .filter(Boolean)
+    return originalLine.split(/\t+/).map((value) => value.trim())
   }
 
   if (originalLine.includes(';')) {
-    return originalLine
-      .split(';')
-      .map((value) => value.trim())
-      .filter(Boolean)
+    return originalLine.split(';').map((value) => value.trim())
   }
 
   if (originalLine.includes(',')) {
-    return originalLine
-      .split(',')
-      .map((value) => value.trim())
-      .filter(Boolean)
+    return originalLine.split(',').map((value) => value.trim())
   }
 
-  return originalLine
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
+  return originalLine.trim().split(/\s+/).filter(Boolean)
 }
 
-function parseTextLines(
-  lines: string[]
-): ImportedRow[] {
+function parseTextLines(lines: string[]): ImportedRow[] {
   const rows: ImportedRow[] = []
 
   for (const originalLine of lines) {
-    const line =
-      originalLine
-        .replace(/\s+/g, ' ')
-        .trim()
+    const line = originalLine.trim()
+    if (!line) continue
 
-    if (!line) {
-      continue
-    }
-
-    const normalized =
-      normalizeHeader(line)
+    const normalized = normalizeHeader(line)
 
     if (
-      normalized.includes('nom') &&
-      normalized.includes('prenom')
+      (normalized.includes('nom') && normalized.includes('prenom')) ||
+      ['listeeleves', 'listedeclasse', 'eleves'].includes(normalized)
     ) {
       continue
     }
 
-    if (
-      normalized === 'listeeleves' ||
-      normalized === 'listedeclasse' ||
-      normalized === 'eleves'
-    ) {
-      continue
-    }
+    const withoutNumber = line.replace(/^\d+[\s.)-]+/, '')
+    const columns = parseTextColumns(withoutNumber)
 
-    const withoutNumber =
-      line.replace(
-        /^\d+[\s.)-]+/,
-        ''
-      )
+    if (columns.length < 2) continue
 
-    const columns =
-      parseTextColumns(
-        originalLine
-      )
-
-    if (columns.length >= 2) {
-      const working = [
-        ...columns
-      ]
-
-      let sexe = ''
-      let whatsapp = ''
-
-      const genderIndex =
-        working.findIndex(
-          (value) =>
-            Boolean(
-              normalizeGenderValue(value)
-            )
-        )
-
-      if (genderIndex >= 0) {
-        sexe =
-          normalizeGenderValue(
-            working[genderIndex]
-          )
-
-        working.splice(
-          genderIndex,
-          1
-        )
-      }
-
-      const whatsappIndex =
-        working.findIndex(
-          (value) =>
-            isWhatsAppValue(value)
-        )
-
-      if (whatsappIndex >= 0) {
-        whatsapp =
-          working[whatsappIndex]
-
-        working.splice(
-          whatsappIndex,
-          1
-        )
-      }
-
-      if (working.length >= 2) {
-        const nom =
-          working[0] ?? ''
-
-        const prenom =
-          working
-            .slice(1)
-            .join(' ')
-
-        if (nom && prenom) {
-          rows.push({
-            Nom: nom,
-            Prenom: prenom,
-            Sexe: sexe,
-            WhatsApp: whatsapp
-          })
-
-          continue
-        }
-      }
-    }
-
-    const parts =
-      withoutNumber
-        .split(/\s+/)
-        .filter(Boolean)
-
-    if (parts.length < 2) {
-      continue
-    }
-
+    const working = [...columns]
     let sexe = ''
     let whatsapp = ''
 
-    const genderIndex =
-      parts.findIndex(
-        (value) =>
-          Boolean(
-            normalizeGenderValue(value)
-          )
-      )
+    const genderIndex = working.findIndex((value) =>
+      Boolean(normalizeGenderValue(value)),
+    )
 
     if (genderIndex >= 0) {
-      sexe =
-        normalizeGenderValue(
-          parts[genderIndex]
-        )
-
-      parts.splice(
-        genderIndex,
-        1
-      )
+      sexe = normalizeGenderValue(working[genderIndex])
+      working.splice(genderIndex, 1)
     }
 
-    const whatsappIndex =
-      parts.findIndex(
-        (value) =>
-          isWhatsAppValue(value)
-      )
+    const whatsappIndex = working.findIndex(isWhatsAppValue)
 
     if (whatsappIndex >= 0) {
-      whatsapp =
-        parts[whatsappIndex]
-
-      parts.splice(
-        whatsappIndex,
-        1
-      )
+      whatsapp = working[whatsappIndex]
+      working.splice(whatsappIndex, 1)
     }
 
-    const nom =
-      parts.shift() ?? ''
+    if (working.length >= 2) {
+      const nom = working[0] ?? ''
+      const prenom = working.slice(1).join(' ')
 
-    const prenom =
-      parts.join(' ')
-
-    if (nom && prenom) {
-      rows.push({
-        Nom: nom,
-        Prenom: prenom,
-        Sexe: sexe,
-        WhatsApp: whatsapp
-      })
+      if (nom && prenom) {
+        rows.push({ Nom: nom, Prenom: prenom, Sexe: sexe, WhatsApp: whatsapp })
+      }
     }
   }
 
   return rows
 }
 
-function cleanRows(
-  rows: ImportedRow[]
-): ImportedRow[] {
-  return rows.filter(
-    (row) =>
-      Boolean(
-        row.Nom?.trim() ||
-        row.Prenom?.trim()
-      )
+function getKnownExtension(fileName: string): string {
+  const cleanName = fileName.split(/[?#]/)[0].trim()
+  const dotIndex = cleanName.lastIndexOf('.')
+
+  if (dotIndex < 0) return ''
+
+  const extension = cleanName.slice(dotIndex + 1).toLowerCase()
+  const supported = ['csv', 'txt', 'xlsx', 'xls', 'docx', 'doc', 'pdf']
+
+  return supported.includes(extension) ? extension : ''
+}
+
+function getFormatFromMime(mime: string): SupportedFormat | null {
+  const type = mime.toLowerCase().split(';')[0].trim()
+
+  if (type === 'application/pdf') return 'pdf'
+  if (type === 'text/csv' || type === 'application/csv') return 'csv'
+
+  if (
+    type === 'text/plain' ||
+    type === 'text/tab-separated-values'
+  ) {
+    return 'csv'
+  }
+
+  if (
+    type.includes('spreadsheetml') ||
+    type === 'application/vnd.ms-excel' ||
+    type === 'application/x-excel' ||
+    type === 'application/xls'
+  ) {
+    return 'excel'
+  }
+
+  if (
+    type.includes('wordprocessingml') ||
+    type === 'application/msword'
+  ) {
+    return 'word'
+  }
+
+  return null
+}
+
+async function detectFormat(file: File): Promise<SupportedFormat> {
+  const extension = getKnownExtension(file.name)
+
+  if (extension === 'doc') {
+    throw new Error(
+      'Le format Word .doc ancien n’est pas pris en charge. Enregistrez le document au format .docx ou .pdf.',
+    )
+  }
+
+  if (extension === 'csv' || extension === 'txt') return 'csv'
+  if (extension === 'xlsx' || extension === 'xls') return 'excel'
+  if (extension === 'docx') return 'word'
+  if (extension === 'pdf') return 'pdf'
+
+  const mimeFormat = getFormatFromMime(file.type)
+  if (mimeFormat) return mimeFormat
+
+  // Certains sélecteurs Android fournissent un nom sans extension.
+  // On examine alors la signature du fichier.
+  const buffer = await file.slice(0, 8).arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+
+  if (
+    bytes.length >= 5 &&
+    bytes[0] === 0x25 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x44 &&
+    bytes[3] === 0x46 &&
+    bytes[4] === 0x2d
+  ) {
+    return 'pdf'
+  }
+
+  // XLSX et DOCX sont tous les deux des archives ZIP.
+  // On tente d’abord la lecture Excel, puis Word si nécessaire.
+  if (
+    bytes.length >= 4 &&
+    bytes[0] === 0x50 &&
+    bytes[1] === 0x4b
+  ) {
+    const fullBuffer = await file.arrayBuffer()
+
+    try {
+      const workbook = XLSX.read(fullBuffer, { type: 'array' })
+      if (workbook.SheetNames.length > 0) return 'excel'
+    } catch {
+      // Ce n’est peut-être pas un fichier Excel.
+    }
+
+    try {
+      const result = await mammoth.convertToHtml({
+        arrayBuffer: fullBuffer,
+      })
+
+      if (result.value.trim()) return 'word'
+    } catch {
+      // Le fichier ZIP n’est probablement pas un DOCX lisible.
+    }
+  }
+
+  // Dernier recours : reconnaître un fichier texte/CSV sans extension.
+  try {
+    const sample = (await file.slice(0, 4096).text()).replace(/^\uFEFF/, '')
+
+    const looksLikeText =
+      sample.length > 0 &&
+      !sample.includes('\u0000') &&
+      /[\r\n,;\t]/.test(sample)
+
+    if (looksLikeText) return 'csv'
+  } catch {
+    // Le contenu n’est pas lisible comme texte.
+  }
+
+  throw new Error(
+    'Format du fichier impossible à identifier. Choisissez un fichier CSV, Excel (.xlsx/.xls), Word (.docx) ou PDF.',
   )
 }
 
-export async function parseStudentsFile(
-  file: File
-): Promise<ImportResult> {
-  const extension =
-    file.name
-      .split('.')
-      .pop()
-      ?.toLowerCase()
+export async function parseStudentsFile(file: File): Promise<ImportResult> {
+  if (!file) {
+    throw new Error('Aucun fichier sélectionné.')
+  }
 
-  switch (extension) {
+  if (file.size === 0) {
+    throw new Error('Le fichier sélectionné est vide.')
+  }
+
+  const format = await detectFormat(file)
+
+  switch (format) {
     case 'csv':
       return parseCsv(file)
 
-    case 'xlsx':
-    case 'xls':
+    case 'excel':
       return parseExcel(file)
 
-    case 'docx':
+    case 'word':
       return parseWord(file)
 
     case 'pdf':
       return parsePDF(file)
 
-    default:
-      throw new Error(
-        'Format non pris en charge. Utilisez Excel (.xlsx/.xls), CSV (.csv), Word (.docx) ou PDF (.pdf).'
-      )
+    default: {
+      const unsupported: never = format
+      throw new Error(`Format non pris en charge : ${unsupported}`)
+    }
   }
 }
- 
