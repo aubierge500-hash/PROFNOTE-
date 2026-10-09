@@ -1,3 +1,4 @@
+
 import * as XLSX from 'xlsx'
 import Papa from 'papaparse'
 import mammoth from 'mammoth'
@@ -90,7 +91,7 @@ function normalizeHeader(value: unknown): string {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim()
-    .replace(/[\s_-]+/g, '')
+    .replace(/[^a-z0-9]/g, '')
 }
 
 function normalizeValue(value: unknown): string {
@@ -98,7 +99,9 @@ function normalizeValue(value: unknown): string {
     return ''
   }
 
-  return String(value).trim()
+  return String(value)
+    .replace(/\u00a0/g, ' ')
+    .trim()
 }
 
 function findColumnIndex(
@@ -112,14 +115,30 @@ function findColumnIndex(
   )
 }
 
+/**
+ * Détecte la ligne des en-têtes.
+ * Les colonnes Nom et Prénom sont obligatoires :
+ * une ligne contenant seulement l'une d'elles ne doit
+ * jamais être considérée comme la ligne des en-têtes.
+ */
 function findHeaderRow(matrix: string[][]): number {
-  const limit = Math.min(matrix.length, 10)
+  const limit = Math.min(matrix.length, 15)
 
   let bestIndex = -1
   let bestScore = 0
 
   for (let i = 0; i < limit; i++) {
     const row = matrix[i].map(normalizeValue)
+
+    const hasNom =
+      findColumnIndex(row, COLUMN_ALIASES.nom) >= 0
+
+    const hasPrenom =
+      findColumnIndex(row, COLUMN_ALIASES.prenom) >= 0
+
+    if (!hasNom || !hasPrenom) {
+      continue
+    }
 
     const score = [
       findColumnIndex(row, COLUMN_ALIASES.nom),
@@ -719,8 +738,7 @@ function parseTextLines(
     if (
       normalized === 'listeeleves' ||
       normalized === 'listedeclasse' ||
-      normalized === 'eleves' ||
-      normalized === 'élèves'
+      normalized === 'eleves'
     ) {
       continue
     }
