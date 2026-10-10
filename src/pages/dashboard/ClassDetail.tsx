@@ -1819,7 +1819,6 @@ export default function ClassDetail() {
                   ref={fileInputRef}
                   type="file"
                   className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                  accept=".csv,.xlsx,.xls,.docx,.pdf,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf"
                   disabled={readingFile}
                   onClick={() => {
                     setImportError('')
