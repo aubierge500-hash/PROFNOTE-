@@ -1,7 +1,6 @@
 import {
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ChangeEvent
 } from 'react'
@@ -14,7 +13,6 @@ import {
   BarChart3,
   FileText,
   MessageCircle,
-  Settings,
   X,
   Save,
   Upload,
@@ -37,6 +35,8 @@ import {
   type ImportResult
 } from '@/lib/importStudentsFile'
 
+import { parseStudentListText } from '@/lib/studentListParser'
+
 import type {
   SchoolClass,
   Student,
@@ -51,7 +51,6 @@ type ClassSection =
   | 'resultats'
   | 'bulletins'
   | 'communication'
-  | 'parametres'
 
 type GradeMap = Record<string, Grade>
 
@@ -166,15 +165,6 @@ export default function ClassDetail() {
 
   const [importing, setImporting] =
     useState(false)
-
-  const [readingFile, setReadingFile] =
-    useState(false)
-
-  const [importStatus, setImportStatus] =
-    useState('')
-
-  const fileInputRef =
-    useRef<HTMLInputElement | null>(null)
 
   const [deletingStudent, setDeletingStudent] =
     useState<string | null>(null)
@@ -342,96 +332,15 @@ export default function ClassDetail() {
     }
   }
 
-  function parsePastedStudents(
-    text: string
-  ): ImportedRow[] {
-    const lines = text
-      .replace(/\u00a0/g, ' ')
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-
-    const rows: ImportedRow[] = []
-
-    for (const originalLine of lines) {
-      const line = originalLine.replace(
-        /^\d+[\s.)-]+/,
-        ''
-      ).trim()
-
-      if (!line) continue
-
-      const normalizedHeader = line
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-
-      if (
-        normalizedHeader.includes('nom') &&
-        normalizedHeader.includes('prenom')
-      ) continue
-
-      let columns: string[]
-
-      if (originalLine.includes('\t')) {
-        columns = originalLine.split('\t')
-      } else if (originalLine.includes(';')) {
-        columns = originalLine.split(';')
-      } else if (originalLine.includes(',')) {
-        columns = originalLine.split(',')
-      } else {
-        columns = line.split(/\s+/)
-      }
-
-      columns = columns.map((value) => value.trim())
-      while (columns.length > 0 && !columns[columns.length - 1]) columns.pop()
-      if (columns.length < 2) continue
-
-      let gender = ''
-      let whatsapp = ''
-
-      const normalize = (value: string) =>
-        value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
-
-      const genderIndex = columns.findIndex((value) =>
-        ['f', 'fille', 'feminin', 'female', 'm', 'garcon', 'masculin', 'male'].includes(normalize(value))
-      )
-
-      if (genderIndex >= 0) {
-        const value = normalize(columns[genderIndex])
-        gender = ['f', 'fille', 'feminin', 'female'].includes(value) ? 'F' : 'M'
-        columns.splice(genderIndex, 1)
-      }
-
-      const phoneIndex = columns.findIndex((value) => {
-        const digits = value.replace(/\D/g, '')
-        return digits.length === 8 || digits.length === 10 ||
-          (digits.startsWith('229') && digits.length >= 11)
-      })
-
-      if (phoneIndex >= 0) {
-        whatsapp = columns[phoneIndex]
-        columns.splice(phoneIndex, 1)
-      }
-
-      const nonEmptyColumns = columns.map((value) => value.trim()).filter(Boolean)
-      if (nonEmptyColumns.length < 2) continue
-
-      const lastName = nonEmptyColumns[0]
-      const firstName = nonEmptyColumns.slice(1).join(' ')
-      if (!lastName || !firstName) continue
-
-      rows.push({ Nom: lastName, Prenom: firstName, Sexe: gender, WhatsApp: whatsapp })
-    }
-
-    return rows
-  }
+  /* =========================
+     COLLAGE D'UNE LISTE
+     ========================= */
 
   function previewPastedStudents() {
     setPasteError('')
 
     const rows =
-      parsePastedStudents(pasteText)
+      parseStudentListText(pasteText)
 
     if (rows.length === 0) {
       setPasteRows([])
@@ -511,57 +420,32 @@ export default function ClassDetail() {
   async function handleFileSelect(
     event: ChangeEvent<HTMLInputElement>
   ) {
-    // Conserver la référence du fichier avant de réinitialiser le champ :
-    // cela permet de sélectionner deux fois de suite le même fichier.
-    const input = event.currentTarget
-    const file = input.files?.[0] ?? null
-    input.value = ''
+    const file =
+      event.target.files?.[0]
 
-    if (!file) {
-      setImportStatus('')
-      return
-    }
+    event.target.value = ''
+
+    if (!file) return
 
     setImportError('')
     setImportResult(null)
-    setImportStatus(`Lecture du fichier « ${file.name} »…`)
-    setReadingFile(true)
 
     try {
-      const result = await parseStudentsFile(file)
+      const result =
+        await parseStudentsFile(file)
 
       setImportResult(result)
-
-      if (!result || !Array.isArray(result.rows)) {
-        throw new Error(
-          'Le lecteur de fichier n’a pas retourné de liste exploitable.'
-        )
-      }
-
-      if (result.rows.length === 0) {
-        setImportStatus(`Fichier lu : ${file.name}`)
-        setImportError(
-          'Aucun élève détecté dans ce fichier. Vérifiez que le document contient les colonnes Nom et Prénom, puis réessayez.'
-        )
-      } else {
-        setImportStatus(
-          `Fichier lu : ${file.name} — ${result.rows.length} ligne(s) détectée(s).`
-        )
-      }
     } catch (error) {
       console.error(
         '[ClassDetail] Erreur import fichier :',
         error
       )
-      setImportResult(null)
-      setImportStatus('')
+
       setImportError(
         error instanceof Error
           ? error.message
-          : 'Impossible de lire ce fichier. Vérifiez son format et réessayez.'
+          : 'Impossible de lire ce fichier.'
       )
-    } finally {
-      setReadingFile(false)
     }
   }
 
@@ -1397,8 +1281,6 @@ export default function ClassDetail() {
           average:
             null as number | null,
           best:
-            null as number | null,
-          lowest:
             null as number | null
         }
       }
@@ -1454,9 +1336,6 @@ export default function ClassDetail() {
           : null,
         best: scores.length
           ? Math.max(...scores)
-          : null,
-        lowest: scores.length
-          ? Math.min(...scores)
           : null
       }
     }, [
@@ -1726,14 +1605,13 @@ export default function ClassDetail() {
 
       {/* NAVIGATION */}
 
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         {[
           ['eleves', <Users size={16} />, 'Élèves'],
           ['evaluations', <ClipboardList size={16} />, 'Évaluations'],
           ['resultats', <BarChart3 size={16} />, 'Résultats'],
           ['bulletins', <FileText size={16} />, 'Bulletins'],
-          ['communication', <MessageCircle size={16} />, 'WhatsApp'],
-          ['parametres', <Settings size={16} />, 'Paramètres']
+          ['communication', <MessageCircle size={16} />, 'WhatsApp']
         ].map(([section, icon, label]) => (
           <button
             key={section as string}
@@ -1800,27 +1678,18 @@ export default function ClassDetail() {
                 Coller une liste
               </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setImportError('')
-                  setImportStatus('')
-                  fileInputRef.current?.click()
-                }}
-                disabled={readingFile}
-                className="btn-secondary flex items-center gap-1 text-sm disabled:opacity-60"
-              >
+              <label className="btn-secondary flex items-center gap-1 text-sm cursor-pointer">
                 <Upload size={15} />
-                {readingFile ? 'Lecture…' : 'Importer un fichier'}
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="sr-only"
-                accept=".csv,.xlsx,.xls,.docx,.pdf,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf"
-                onChange={handleFileSelect}
-                aria-label="Choisir un fichier contenant la liste des élèves"
-              />
+                Importer
+                <input
+                  type="file"
+                  className="hidden"
+                  accept=".csv,.xlsx,.xls,.docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  onChange={
+                    handleFileSelect
+                  }
+                />
+              </label>
 
               <PhotoImportButton
                 classId={classId!}
@@ -2086,18 +1955,6 @@ export default function ClassDetail() {
                   </button>
                 </div>
               )}
-            </div>
-          )}
-
-          {/* ÉTAT DE LECTURE DU FICHIER */}
-
-          {importStatus && (
-            <div
-              role="status"
-              aria-live="polite"
-              className="mb-4 rounded-lg border border-primary-100 bg-primary-50 p-3 text-sm text-primary-700"
-            >
-              {importStatus}
             </div>
           )}
 
@@ -3265,76 +3122,6 @@ export default function ClassDetail() {
         </section>
       )}
 
-      {/* =========================
-          PARAMÈTRES
-          ========================= */}
-
-      {activeSection ===
-        'parametres' && (
-        <section className="card">
-          <div className="flex items-center gap-2 mb-4">
-            <Settings
-              size={20}
-              className="text-primary-500"
-            />
-
-            <h2 className="font-semibold text-primary-800">
-              Paramètres de la classe
-            </h2>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="rounded-lg bg-primary-50 p-4">
-              <p className="text-xs text-primary-400">
-                Nom
-              </p>
-
-              <p className="font-semibold text-primary-800">
-                {schoolClass.name}
-              </p>
-            </div>
-
-            <div className="rounded-lg bg-primary-50 p-4">
-              <p className="text-xs text-primary-400">
-                Niveau
-              </p>
-
-              <p className="font-semibold text-primary-800">
-                {schoolClass.level ||
-                  'Non renseigné'}
-              </p>
-            </div>
-
-            <div className="rounded-lg bg-primary-50 p-4">
-              <p className="text-xs text-primary-400">
-                Année scolaire
-              </p>
-
-              <p className="font-semibold text-primary-800">
-                {
-                  schoolClass.school_year
-                }
-              </p>
-            </div>
-
-            <div className="rounded-lg bg-primary-50 p-4">
-              <p className="text-xs text-primary-400">
-                Élèves actifs
-              </p>
-
-              <p className="font-semibold text-primary-800">
-                {students.length}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-5 rounded-lg border border-primary-100 p-4">
-            <p className="text-sm text-primary-600">
-              La gestion détaillée des paramètres de classe reste accessible depuis le module Classes.
-            </p>
-          </div>
-        </section>
-      )}
     </div>
   )
-}  
+} 
