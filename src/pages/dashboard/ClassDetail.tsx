@@ -64,6 +64,123 @@ type StudentResult = {
   absent: number
 }
 
+type AnnualResult = {
+  student: Student
+  periodAverages: Array<number | null>
+  average: number | null
+  rank: number | null
+}
+
+function mean(values: number[]): number | null {
+  if (values.length === 0) return null
+
+  return (
+    values.reduce((sum, value) => sum + value, 0) /
+    values.length
+  )
+}
+
+/** Rang « à égalité » : deux moyennes identiques ont le même rang. */
+function assignRanks<
+  T extends { average: number | null; rank: number | null }
+>(items: T[]): void {
+  const ranked = items
+    .filter((item) => item.average !== null)
+    .sort((a, b) => (b.average ?? 0) - (a.average ?? 0))
+
+  let lastAverage: number | null = null
+  let lastRank = 0
+
+  ranked.forEach((item, index) => {
+    if (item.average !== lastAverage) {
+      lastRank = index + 1
+      lastAverage = item.average
+    }
+
+    item.rank = lastRank
+  })
+}
+
+/** Classe par rang ; les élèves sans moyenne passent en dernier (ordre alphabétique). */
+function sortByRank<
+  T extends {
+    student: Student
+    average: number | null
+    rank: number | null
+  }
+>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    if (a.average === null && b.average === null) {
+      return a.student.last_name.localeCompare(
+        b.student.last_name
+      )
+    }
+
+    if (a.average === null) return 1
+    if (b.average === null) return -1
+
+    return (a.rank ?? 9999) - (b.rank ?? 9999)
+  })
+}
+
+/** Moyenne pondérée sur 20 de chaque élève pour une liste d'évaluations. */
+function computeStudentResults(
+  students: Student[],
+  evaluations: Evaluation[],
+  allGrades: GradeMap
+): StudentResult[] {
+  const results: StudentResult[] = students.map((student) => {
+    let weightedTotal = 0
+    let coefficientTotal = 0
+    let graded = 0
+    let missing = 0
+    let absent = 0
+
+    for (const evaluation of evaluations) {
+      const grade =
+        allGrades[`${evaluation.id}:${student.id}`]
+
+      if (!grade) {
+        missing++
+        continue
+      }
+
+      if (grade.is_absent) {
+        absent++
+        continue
+      }
+
+      if (grade.score === null) {
+        missing++
+        continue
+      }
+
+      const normalized =
+        (grade.score / evaluation.max_score) * 20
+
+      weightedTotal += normalized * evaluation.coefficient
+      coefficientTotal += evaluation.coefficient
+      graded++
+    }
+
+    return {
+      student,
+      average:
+        coefficientTotal > 0
+          ? weightedTotal / coefficientTotal
+          : null,
+      rank: null,
+      graded,
+      missing,
+      absent
+    }
+  })
+
+  assignRanks(results)
+
+  return results
+}
+
 export default function ClassDetail() {
   const { classId } = useParams<{ classId: string }>()
   const navigate = useNavigate()
@@ -126,8 +243,13 @@ export default function ClassDetail() {
     subject: '',
     eval_date: new Date().toISOString().slice(0, 10),
     coefficient: 1,
-    max_score: 20
+    max_score: 20,
+    period: 1
   })
+
+  // null = automatique (dernière période utilisée) ; 0 = vue « Année »
+  const [resultPeriod, setResultPeriod] =
+    useState<number | null>(null)
 
   /* =========================
      GESTION DES ÉLÈVES
@@ -1120,6 +1242,78 @@ export default function ClassDetail() {
      ÉVALUATIONS
      ========================= */
 
+  function periodsMissingMessage(message: string): string {
+    return /period/i.test(message)
+      ? "La base de données n'a pas encore la colonne « période ». Exécutez d'abord la mise à jour SQL, puis réessayez."
+      : message
+  }
+
+  async function handleEvaluationPeriodChange(
+    evaluation: Evaluation,
+    period: number
+  ) {
+    if (!user) return
+
+    setErrorMessage('')
+
+    const { error } = await supabase
+      .from('evaluations')
+      .update({ period })
+      .eq('id', evaluation.id)
+      .eq('teacher_id', user.id)
+
+    if (error) {
+      setErrorMessage(periodsMissingMessage(error.message))
+      return
+    }
+
+    setEvaluations((current) =>
+      current.map((item) =>
+        item.id === evaluation.id
+          ? { ...item, period }
+          : item
+      )
+    )
+
+    setSelectedEvaluation((current) =>
+      current && current.id === evaluation.id
+        ? { ...current, period }
+        : current
+    )
+  }
+
+  async function handlePeriodCountChange(count: 2 | 3) {
+    if (!user || !classId || !schoolClass) return
+
+    if (
+      count === 2 &&
+      evaluations.some(
+        (evaluation) => (evaluation.period ?? 1) > 2
+      )
+    ) {
+      setErrorMessage(
+        'Déplacez d’abord les évaluations du 3e trimestre vers une autre période, puis passez aux semestres.'
+      )
+      return
+    }
+
+    setErrorMessage('')
+
+    const { error } = await supabase
+      .from('classes')
+      .update({ period_count: count })
+      .eq('id', classId)
+      .eq('teacher_id', user.id)
+
+    if (error) {
+      setErrorMessage(periodsMissingMessage(error.message))
+      return
+    }
+
+    setSchoolClass({ ...schoolClass, period_count: count })
+    setResultPeriod(null)
+  }
+
   function resetEvaluationForm() {
     setEvaluationForm({
       title: '',
@@ -1130,7 +1324,8 @@ export default function ClassDetail() {
           .toISOString()
           .slice(0, 10),
       coefficient: 1,
-      max_score: 20
+      max_score: 20,
+      period: evaluationForm.period
     })
   }
 
@@ -1190,7 +1385,9 @@ export default function ClassDetail() {
             coefficient:
               evaluationForm.coefficient,
             max_score:
-              evaluationForm.max_score
+              evaluationForm.max_score,
+            period:
+              evaluationForm.period
           })
           .select()
           .single()
@@ -1210,7 +1407,7 @@ export default function ClassDetail() {
     } catch (error) {
       setErrorMessage(
         error instanceof Error
-          ? error.message
+          ? periodsMissingMessage(error.message)
           : "Impossible de créer l'évaluation."
       )
     } finally {
@@ -1222,112 +1419,108 @@ export default function ClassDetail() {
      CALCULS
      ========================= */
 
-  const studentResults =
-    useMemo<StudentResult[]>(() => {
-      const results: StudentResult[] =
-        students.map((student) => {
-          let weightedTotal = 0
-          let coefficientTotal = 0
-          let graded = 0
-          let missing = 0
-          let absent = 0
+  /* PÉRIODES (trimestres ou semestres) */
 
-          for (
-            const evaluation of
-              evaluations
-          ) {
-            const grade =
-              allGrades[
-                `${evaluation.id}:${student.id}`
-              ]
+  const periodCount: 2 | 3 =
+    schoolClass?.period_count === 2 ? 2 : 3
 
-            if (!grade) {
-              missing++
-              continue
-            }
+  function periodLabel(period: number): string {
+    return `${periodCount === 2 ? 'S' : 'T'}${period}`
+  }
 
-            if (grade.is_absent) {
-              absent++
-              continue
-            }
+  function periodName(period: number): string {
+    const rank = period === 1 ? '1er' : `${period}e`
 
-            if (
-              grade.score === null
-            ) {
-              missing++
-              continue
-            }
+    return `${rank} ${
+      periodCount === 2 ? 'semestre' : 'trimestre'
+    }`
+  }
 
-            const normalized =
-              (
-                grade.score /
-                evaluation.max_score
-              ) * 20
+  const periodNumbers = Array.from(
+    { length: periodCount },
+    (_, index) => index + 1
+  )
 
-            weightedTotal +=
-              normalized *
-              evaluation.coefficient
+  const latestPeriod = useMemo(() => {
+    let max = 1
 
-            coefficientTotal +=
-              evaluation.coefficient
+    for (const evaluation of evaluations) {
+      max = Math.max(max, evaluation.period ?? 1)
+    }
 
-            graded++
-          }
+    return Math.min(max, periodCount)
+  }, [evaluations, periodCount])
 
-          const average =
-            coefficientTotal > 0
-              ? weightedTotal /
-                coefficientTotal
-              : null
+  // 0 = vue « Année »
+  const activePeriod =
+    resultPeriod === 0
+      ? 0
+      : Math.min(resultPeriod ?? latestPeriod, periodCount)
 
-          return {
-            student,
-            average,
-            rank: null,
-            graded,
-            missing,
-            absent
-          }
-        })
+  const visibleEvaluations = useMemo(
+    () =>
+      activePeriod === 0
+        ? evaluations
+        : evaluations.filter(
+            (evaluation) =>
+              (evaluation.period ?? 1) === activePeriod
+          ),
+    [evaluations, activePeriod]
+  )
 
-      const ranked =
-        [...results]
-          .filter(
-            (item) =>
-              item.average !== null
-          )
-          .sort(
-            (a, b) =>
-              (b.average ?? 0) -
-              (a.average ?? 0)
-          )
+  const studentResults = useMemo<StudentResult[]>(
+    () =>
+      computeStudentResults(
+        students,
+        visibleEvaluations,
+        allGrades
+      ),
+    [students, visibleEvaluations, allGrades]
+  )
 
-      let lastAverage:
-        number | null = null
+  const annualResults = useMemo<AnnualResult[]>(() => {
+    if (activePeriod !== 0) return []
 
-      let lastRank = 0
-
-      ranked.forEach(
-        (item, index) => {
-          if (
-            item.average !==
-            lastAverage
-          ) {
-            lastRank = index + 1
-            lastAverage =
-              item.average
-          }
-
-          item.rank = lastRank
-        }
+    const byPeriod = periodNumbers.map((period) =>
+      computeStudentResults(
+        students,
+        evaluations.filter(
+          (evaluation) =>
+            (evaluation.period ?? 1) === period
+        ),
+        allGrades
       )
+    )
 
-      return results
-    }, [
-      students,
-      evaluations,
-      allGrades
-    ])
+    const rows: AnnualResult[] = students.map(
+      (student, index) => {
+        const periodAverages = byPeriod.map(
+          (results) => results[index]?.average ?? null
+        )
+
+        return {
+          student,
+          periodAverages,
+          average: mean(
+            periodAverages.filter(
+              (value): value is number => value !== null
+            )
+          ),
+          rank: null
+        }
+      }
+    )
+
+    assignRanks(rows)
+
+    return rows
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePeriod, students, evaluations, allGrades, periodCount])
+
+  const annualRanked = useMemo(
+    () => sortByRank(annualResults),
+    [annualResults]
+  )
 
   const rankedStudents =
     useMemo(
@@ -1366,31 +1559,17 @@ export default function ClassDetail() {
 
   const classAverage =
     useMemo(() => {
-      const values =
-        studentResults
-          .map(
-            (item) =>
-              item.average
-          )
+      const source =
+        activePeriod === 0 ? annualResults : studentResults
+
+      return mean(
+        source
+          .map((item) => item.average)
           .filter(
-            (
-              value
-            ): value is number =>
-              value !== null
+            (value): value is number => value !== null
           )
-
-      if (!values.length) {
-        return null
-      }
-
-      return (
-        values.reduce(
-          (sum, value) =>
-            sum + value,
-          0
-        ) / values.length
       )
-    }, [studentResults])
+    }, [activePeriod, annualResults, studentResults])
 
   const gradebookStats =
     useMemo(() => {
@@ -2537,6 +2716,23 @@ export default function ClassDetail() {
                         })
                       }
                     />
+
+                    <select
+                      className="input-field"
+                      value={evaluationForm.period}
+                      onChange={(e) =>
+                        setEvaluationForm({
+                          ...evaluationForm,
+                          period: Number(e.target.value)
+                        })
+                      }
+                    >
+                      {periodNumbers.map((period) => (
+                        <option key={period} value={period}>
+                          {periodName(period)}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <button
@@ -2587,6 +2783,10 @@ export default function ClassDetail() {
                           </p>
 
                           <p className="text-xs text-primary-400">
+                            {periodLabel(
+                              evaluation.period ?? 1
+                            )}{' '}
+                            ·{' '}
                             {
                               evaluation.subject
                             }{' '}
@@ -2646,6 +2846,29 @@ export default function ClassDetail() {
                       selectedEvaluation.coefficient
                     }
                   </p>
+
+                  <div className="mt-2 flex items-center gap-2">
+                    <label className="text-xs text-primary-400">
+                      Période
+                    </label>
+
+                    <select
+                      className="input-field !w-auto text-xs"
+                      value={selectedEvaluation.period ?? 1}
+                      onChange={(e) =>
+                        void handleEvaluationPeriodChange(
+                          selectedEvaluation,
+                          Number(e.target.value)
+                        )
+                      }
+                    >
+                      {periodNumbers.map((period) => (
+                        <option key={period} value={period}>
+                          {periodName(period)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -2924,7 +3147,10 @@ export default function ClassDetail() {
 
               <p className="text-sm text-primary-500 mt-1">
                 {students.length} élèves ·{' '}
-                {evaluations.length} évaluations
+                {visibleEvaluations.length} évaluations ·{' '}
+                {activePeriod === 0
+                  ? 'Année complète'
+                  : periodName(activePeriod)}
               </p>
             </div>
 
@@ -2942,6 +3168,65 @@ export default function ClassDetail() {
             </div>
           </div>
 
+          <div className="mb-4 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {periodNumbers.map((period) => (
+                <button
+                  key={period}
+                  type="button"
+                  onClick={() => setResultPeriod(period)}
+                  className={`rounded-lg px-3 py-2 text-sm ${
+                    activePeriod === period
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-primary-50 text-primary-700'
+                  }`}
+                >
+                  {periodName(period)}
+                </button>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => setResultPeriod(0)}
+                className={`rounded-lg px-3 py-2 text-sm ${
+                  activePeriod === 0
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-primary-50 text-primary-700'
+                }`}
+              >
+                Année
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-xs text-primary-500">
+              <span>Découpage de l'année :</span>
+
+              <button
+                type="button"
+                onClick={() => void handlePeriodCountChange(3)}
+                className={`rounded-full px-3 py-1 ${
+                  periodCount === 3
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-primary-50 text-primary-700'
+                }`}
+              >
+                3 trimestres
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handlePeriodCountChange(2)}
+                className={`rounded-full px-3 py-1 ${
+                  periodCount === 2
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-primary-50 text-primary-700'
+                }`}
+              >
+                2 semestres
+              </button>
+            </div>
+          </div>
+
           {evaluations.length ===
           0 ? (
             <div className="rounded-lg bg-primary-50 p-4">
@@ -2953,6 +3238,83 @@ export default function ClassDetail() {
             <p className="text-sm text-primary-400 py-5">
               Construction du carnet de notes…
             </p>
+          ) : activePeriod === 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[520px] text-sm">
+                <thead>
+                  <tr className="border-b border-primary-100 text-xs text-primary-400">
+                    <th className="py-3 px-2 text-left">
+                      Rang
+                    </th>
+
+                    <th className="py-3 px-2 text-left">
+                      Élève
+                    </th>
+
+                    {periodNumbers.map((period) => (
+                      <th
+                        key={period}
+                        className="py-3 px-2 text-center"
+                      >
+                        {periodName(period)}
+                      </th>
+                    ))}
+
+                    <th className="py-3 px-2 text-center">
+                      Moyenne annuelle
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {annualRanked.map((row) => (
+                    <tr
+                      key={row.student.id}
+                      className="border-b border-primary-50"
+                    >
+                      <td className="py-3 px-2 text-center font-semibold text-primary-700">
+                        {row.rank ?? '—'}
+                      </td>
+
+                      <td className="py-3 px-2 font-medium text-primary-800">
+                        {row.student.last_name}{' '}
+                        {row.student.first_name}
+                      </td>
+
+                      {row.periodAverages.map((value, index) => (
+                        <td
+                          key={index}
+                          className="py-3 px-2 text-center"
+                        >
+                          {value === null
+                            ? '—'
+                            : `${value.toFixed(2)}/20`}
+                        </td>
+                      ))}
+
+                      <td className="py-3 px-2 text-center font-bold">
+                        {row.average === null
+                          ? '—'
+                          : `${row.average.toFixed(2)}/20`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <p className="mt-3 text-xs text-primary-400">
+                Moyenne annuelle = moyenne des moyennes de période
+                disponibles.
+              </p>
+            </div>
+          ) : visibleEvaluations.length === 0 ? (
+            <div className="rounded-lg bg-primary-50 p-4">
+              <p className="text-sm text-primary-600">
+                Aucune évaluation pour le {periodName(activePeriod)}.
+                Créez-en une dans l'onglet Évaluations en choisissant
+                cette période.
+              </p>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] text-sm">
@@ -2966,7 +3328,7 @@ export default function ClassDetail() {
                       Élève
                     </th>
 
-                    {evaluations.map(
+                    {visibleEvaluations.map(
                       (evaluation) => (
                         <th
                           key={
@@ -3031,7 +3393,7 @@ export default function ClassDetail() {
                           }
                         </td>
 
-                        {evaluations.map(
+                        {visibleEvaluations.map(
                           (
                             evaluation
                           ) => {
@@ -3074,7 +3436,7 @@ export default function ClassDetail() {
                         <td className="py-3 px-2 text-center text-xs">
                           {result.graded}/
                           {
-                            evaluations.length
+                            visibleEvaluations.length
                           }
                         </td>
 
