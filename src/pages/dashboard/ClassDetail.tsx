@@ -201,7 +201,7 @@ export default function ClassDetail() {
     if (user && classId) {
       void loadClass()
     }
-  }, [user, classId])
+  }, [user?.id, classId])
 
   async function loadClass() {
     if (!user || !classId) return
@@ -1641,7 +1641,7 @@ export default function ClassDetail() {
      CHARGEMENT
      ========================= */
 
-  if (loading) {
+    if (loading && !schoolClass) {
     return (
       <div className="p-6">
         <p className="text-sm text-primary-500">
