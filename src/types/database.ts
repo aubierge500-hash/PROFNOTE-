@@ -24,6 +24,8 @@ export interface SchoolClass {
   level: string | null
   school_year: string
   is_archived: boolean
+  /** 3 = trimestres (défaut), 2 = semestres */
+  period_count?: number
   created_at: string
   updated_at: string
 }
@@ -53,6 +55,8 @@ export interface Evaluation {
   eval_date: string
   coefficient: number
   max_score: number
+  /** Numéro de la période (trimestre ou semestre), 1 par défaut */
+  period?: number
   is_published: boolean
   created_at: string
   updated_at: string
