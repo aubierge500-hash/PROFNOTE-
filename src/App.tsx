@@ -9,6 +9,7 @@ import ForgotPassword from '@/pages/auth/ForgotPassword'
 import ResetPassword from '@/pages/auth/ResetPassword'
 
 import SubscriptionPage from '@/pages/SubscriptionPage'
+import AdminSubscriptions from '@/pages/admin/AdminSubscriptions'
 
 import DashboardLayout from '@/components/layout/DashboardLayout'
 import Dashboard from '@/pages/dashboard/Dashboard'
@@ -48,13 +49,17 @@ export default function App() {
         element={<ResetPassword />}
       />
 
-      {/* Accessible après connexion, même si l’essai est expiré */}
       <Route
         path="/abonnement"
         element={<SubscriptionPage />}
       />
 
       <Route element={<ProtectedRoute />}>
+        <Route
+          path="/admin-abonnements"
+          element={<AdminSubscriptions />}
+        />
+
         <Route element={<DashboardLayout />}>
           <Route path="/" element={<Dashboard />} />
 
