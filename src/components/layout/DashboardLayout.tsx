@@ -1,10 +1,12 @@
+Écriture
 import { NavLink, Outlet } from 'react-router-dom'
 import {
   LayoutDashboard,
   School,
   UserCircle,
   LogOut,
-  MessageCircle
+  MessageCircle,
+  ShieldCheck
 } from 'lucide-react'
 import { useAuth } from '@/lib/AuthContext'
 
@@ -28,7 +30,7 @@ const navItems = [
 ]
 
 export default function DashboardLayout() {
-  const { signOut, user } = useAuth()
+  const { signOut, user, profile } = useAuth()
 
   return (
     <div className="min-h-screen bg-primary-50 flex">
@@ -37,7 +39,6 @@ export default function DashboardLayout() {
           <h1 className="text-xl font-display font-bold">
             PROFNOTE
           </h1>
-
           <p className="text-xs text-primary-300 mt-1">
             Gestion des notes
           </p>
@@ -65,6 +66,22 @@ export default function DashboardLayout() {
               </NavLink>
             )
           })}
+
+          {profile?.role === 'admin' && (
+            <NavLink
+              to="/admin-abonnements"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-primary-600 text-white'
+                    : 'text-primary-200 hover:bg-primary-700'
+                }`
+              }
+            >
+              <ShieldCheck size={18} />
+              Administration
+            </NavLink>
+          )}
         </nav>
 
         <div className="p-3 border-t border-primary-700">
