@@ -1,3 +1,4 @@
+
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from '@/lib/AuthContext'
 import ProtectedRoute from '@/routes/ProtectedRoute'
@@ -6,6 +7,9 @@ import Login from '@/pages/auth/Login'
 import Register from '@/pages/auth/Register'
 import ForgotPassword from '@/pages/auth/ForgotPassword'
 import ResetPassword from '@/pages/auth/ResetPassword'
+
+import SubscriptionPage from '@/pages/abonnement/SubscriptionPage'
+import AdminSubscriptions from '@/pages/admin/AdminSubscriptions'
 
 import DashboardLayout from '@/components/layout/DashboardLayout'
 import Dashboard from '@/pages/dashboard/Dashboard'
@@ -34,16 +38,26 @@ export default function App() {
     <Routes>
       <Route path="/connexion" element={<Login />} />
       <Route path="/inscription" element={<Register />} />
+
       <Route
         path="/mot-de-passe-oublie"
         element={<ForgotPassword />}
       />
+
       <Route
         path="/reinitialiser-mot-de-passe"
         element={<ResetPassword />}
       />
 
+      {/* Accessible après connexion, même si l’essai est expiré */}
+      <Route path="/abonnement" element={<SubscriptionPage />} />
+
       <Route element={<ProtectedRoute />}>
+        <Route
+          path="/admin-abonnements"
+          element={<AdminSubscriptions />}
+        />
+
         <Route element={<DashboardLayout />}>
           <Route path="/" element={<Dashboard />} />
 
@@ -59,16 +73,9 @@ export default function App() {
             element={<StudentDetail />}
           />
 
-          <Route
-            path="/evaluations"
-            element={<Evaluations />}
-          />
+          <Route path="/evaluations" element={<Evaluations />} />
 
-          <Route
-            path="/whatsapp"
-            element={<WhatsApp />}
-          />
-
+          <Route path="/whatsapp" element={<WhatsApp />} />
           <Route
             path="/whatsapp-historique"
             element={<WhatsAppHistory />}
