@@ -8,8 +8,7 @@ import Register from '@/pages/auth/Register'
 import ForgotPassword from '@/pages/auth/ForgotPassword'
 import ResetPassword from '@/pages/auth/ResetPassword'
 
-import SubscriptionPage from '@/pages/abonnement/SubscriptionPage'
-import AdminSubscriptions from '@/pages/admin/AdminSubscriptions'
+import SubscriptionPage from '@/pages/SubscriptionPage'
 
 import DashboardLayout from '@/components/layout/DashboardLayout'
 import Dashboard from '@/pages/dashboard/Dashboard'
@@ -50,14 +49,12 @@ export default function App() {
       />
 
       {/* Accessible après connexion, même si l’essai est expiré */}
-      <Route path="/abonnement" element={<SubscriptionPage />} />
+      <Route
+        path="/abonnement"
+        element={<SubscriptionPage />}
+      />
 
       <Route element={<ProtectedRoute />}>
-        <Route
-          path="/admin-abonnements"
-          element={<AdminSubscriptions />}
-        />
-
         <Route element={<DashboardLayout />}>
           <Route path="/" element={<Dashboard />} />
 
@@ -73,9 +70,13 @@ export default function App() {
             element={<StudentDetail />}
           />
 
-          <Route path="/evaluations" element={<Evaluations />} />
+          <Route
+            path="/evaluations"
+            element={<Evaluations />}
+          />
 
           <Route path="/whatsapp" element={<WhatsApp />} />
+
           <Route
             path="/whatsapp-historique"
             element={<WhatsAppHistory />}
