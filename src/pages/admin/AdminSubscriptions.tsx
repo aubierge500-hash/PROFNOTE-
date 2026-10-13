@@ -134,7 +134,7 @@ export default function AdminSubscriptions() {
 
     const message =
       action === 'activate'
-        ? `Activer l'abonnement de ${teacher.full_name || teacher.email || 'cet enseignant'} pour 30 jours ?`
+        ? `Activer l'abonnement de ${teacher.full_name || teacher.email || 'cet enseignant'} pour 10 mois ?`
         : `Suspendre l'accès de ${teacher.full_name || teacher.email || 'cet enseignant'} ?`
 
     if (!window.confirm(message)) return
@@ -145,10 +145,25 @@ export default function AdminSubscriptions() {
 
     try {
       const now = new Date()
-      const paidUntil =
-        action === 'activate'
-          ? new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
-          : now
+      let paidUntil = new Date(now)
+
+      if (action === 'activate') {
+        // Ajouter 10 mois calendaires sans dépasser le dernier jour du mois cible.
+        const originalDay = paidUntil.getDate()
+
+        paidUntil.setDate(1)
+        paidUntil.setMonth(paidUntil.getMonth() + 10)
+
+        const lastDayOfTargetMonth = new Date(
+          paidUntil.getFullYear(),
+          paidUntil.getMonth() + 1,
+          0
+        ).getDate()
+
+        paidUntil.setDate(
+          Math.min(originalDay, lastDayOfTargetMonth)
+        )
+      }
 
       const payload = {
         user_id: teacher.id,
@@ -295,8 +310,8 @@ export default function AdminSubscriptions() {
                         {isBusy
                           ? 'Traitement…'
                           : isActive
-                            ? 'Renouveler 30 jours'
-                            : 'Activer 30 jours'}
+                            ? 'Renouveler 10 mois'
+                            : 'Activer 10 mois'}
                       </button>
 
                       <button
