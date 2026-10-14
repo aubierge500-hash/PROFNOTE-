@@ -96,4 +96,7 @@ export interface BulletinData {
   chefAppreciation?: string;
   place: string;
   date: string;
-}
+  stampUrl?: string;
+  signatureUrl?: string;
+  teacherSignatureUrl?: string;
+  directorSignatureUrl?: string;}
