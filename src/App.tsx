@@ -22,7 +22,6 @@ import Profile from '@/pages/dashboard/Profile'
 import WhatsApp from '@/pages/dashboard/WhatsApp'
 import WhatsAppHistory from '@/pages/dashboard/WhatsAppHistory'
 import Scanner from '@/pages/dashboard/Scanner'
-import Bulletins from '@/pages/dashboard/Bulletins'
 
 export default function App() {
   const { loading } = useAuth()
@@ -90,7 +89,6 @@ export default function App() {
 
           <Route path="/profil" element={<Profile />} />
           <Route path="/scanner" element={<Scanner />} />
-          <Route path="/bulletins" element={<Bulletins />} />
         </Route>
       </Route>
 
