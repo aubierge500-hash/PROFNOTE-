@@ -271,11 +271,28 @@ export default function PrimaireSheet({ template: t, data: d }: Props) {
         <div className="grid grid-cols-3 gap-3 mt-3 text-center">
           <div>
             <b>{d.student.sex === 'F' ? 'La titulaire' : 'Le titulaire'} de la classe</b>
-            <div className="mt-6">{d.titulaire ?? ''}</div>
+            <div className="mt-1 flex items-center justify-center" style={{ minHeight: 40 }}>
+              {t.teacherSignatureUrl && (
+                <img src={t.teacherSignatureUrl} alt="Signature" className="max-h-[40px] max-w-full object-contain" />
+              )}
+            </div>
+            <div>{d.titulaire ?? ''}</div>
           </div>
           <div>
-            <b>Le Directeur / La Directrice</b>
-            <div className="mt-6">{d.directeur ?? ''}</div>
+            <b>{t.chefLabel || 'Le Directeur / La Directrice'}</b>
+            <div className="mt-1 flex items-center justify-center gap-2" style={{ minHeight: 40 }}>
+              {(t.directorSignatureUrl || t.signatureUrl) && (
+                <img
+                  src={t.directorSignatureUrl || t.signatureUrl}
+                  alt="Signature"
+                  className="max-h-[40px] max-w-[45%] object-contain"
+                />
+              )}
+              {t.stampUrl && (
+                <img src={t.stampUrl} alt="Cachet" className="max-h-[40px] max-w-[45%] object-contain" />
+              )}
+            </div>
+            <div>{d.directeur ?? ''}</div>
           </div>
           <div>
             <b>Réponse des parents de l'élève</b>
