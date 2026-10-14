@@ -680,5 +680,4 @@ export default function BulletinPage({
       {!loading && !batch && renderSheet(studentIdx)}
     </div>
   );
-      }
-          
+}
