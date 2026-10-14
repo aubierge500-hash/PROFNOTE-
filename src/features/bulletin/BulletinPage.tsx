@@ -1,7 +1,10 @@
+
 import { useEffect, useState } from 'react';
 import BulletinSheet from './BulletinSheet';
 import PrimaireSheet from './PrimaireSheet';
-import BulletinSettingsForm from './BulletinSettings';
+import BulletinSettingsForm, {
+  type BulletinImageKey,
+} from './BulletinSettings';
 import {
   loadClassBulletins,
   loadClasses,
@@ -24,6 +27,33 @@ type AuthClient = SupabaseLike & {
       error: unknown;
     }>;
   };
+  storage?: {
+    from: (bucket: string) => {
+      upload: (
+        path: string,
+        file: File,
+        options: {
+          cacheControl: string;
+          upsert: boolean;
+          contentType: string;
+        },
+      ) => Promise<{
+        data: unknown;
+        error: unknown;
+      }>;
+      getPublicUrl: (path: string) => {
+        data: { publicUrl: string };
+      };
+    };
+  };
+};
+
+const imageLabels: Record<BulletinImageKey, string> = {
+  logoUrl: 'Logo',
+  stampUrl: 'Cachet',
+  teacherSignatureUrl: 'Signature de l’enseignant',
+  directorSignatureUrl: 'Signature du directeur',
+  signatureUrl: 'Autre signature',
 };
 
 export default function BulletinPage({
@@ -44,6 +74,8 @@ export default function BulletinPage({
   });
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingKey, setUploadingKey] =
+    useState<BulletinImageKey | null>(null);
   const [settingsMessage, setSettingsMessage] = useState('');
 
   const authClient = supabase as AuthClient;
@@ -156,6 +188,93 @@ export default function BulletinPage({
     }
   };
 
+  const uploadImage = async (
+    key: BulletinImageKey,
+    file: File,
+  ): Promise<void> => {
+    setSettingsMessage('');
+
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setSettingsMessage('Format refusé. Choisissez une image PNG, JPG ou WebP.');
+      return;
+    }
+
+    if (file.size > 3 * 1024 * 1024) {
+      setSettingsMessage('Image trop volumineuse. Maximum : 3 Mo.');
+      return;
+    }
+
+    setUploadingKey(key);
+
+    try {
+      if (!authClient.auth || !authClient.storage) {
+        throw new Error('Le stockage des images est indisponible.');
+      }
+
+      const { data: authData, error: authError } =
+        await authClient.auth.getUser();
+
+      if (authError) throw authError;
+
+      const user = authData.user;
+      if (!user) {
+        throw new Error('Connectez-vous avant d’envoyer une image.');
+      }
+
+      const extension =
+        file.type === 'image/png'
+          ? 'png'
+          : file.type === 'image/webp'
+            ? 'webp'
+            : 'jpg';
+
+      const path = `${user.id}/${key}-${Date.now()}.${extension}`;
+
+      const { error: uploadError } = await authClient.storage
+        .from('bulletin-assets')
+        .upload(path, file, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: file.type,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicData } = authClient.storage
+        .from('bulletin-assets')
+        .getPublicUrl(path);
+
+      if (!publicData.publicUrl) {
+        throw new Error('Impossible de récupérer le lien de l’image.');
+      }
+
+      const nextSettings: BulletinSettings = {
+        ...settings,
+        [key]: publicData.publicUrl,
+      };
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ bulletin_settings: nextSettings })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
+      setSettings(nextSettings);
+      setSettingsMessage(
+        `${imageLabels[key]} envoyé et enregistré.`,
+      );
+    } catch (e) {
+      setSettingsMessage(
+        `Envoi impossible : ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    } finally {
+      setUploadingKey(null);
+    }
+  };
+
   const cls = classes.find((c) => c.id === classId);
   const periods = cls?.period_count === 2 ? [1, 2] : [1, 2, 3];
 
@@ -187,14 +306,10 @@ export default function BulletinPage({
   }, [supabase, classId, period]);
 
   const primaryStudents =
-    result?.kind === 'primaire'
-      ? result.primaire ?? []
-      : [];
+    result?.kind === 'primaire' ? result.primaire ?? [] : [];
 
   const secondaryStudents =
-    result?.kind === 'secondaire'
-      ? result.secondaire ?? []
-      : [];
+    result?.kind === 'secondaire' ? result.secondaire ?? [] : [];
 
   const list =
     result?.kind === 'primaire'
@@ -312,6 +427,8 @@ export default function BulletinPage({
               onChange={setSettings}
               onSave={saveSettings}
               saving={saving}
+              uploadingKey={uploadingKey}
+              onUploadImage={uploadImage}
             />
           )}
 
