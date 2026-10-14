@@ -1,73 +1,95 @@
-// src/features/bulletin/primaire.templates.ts
-// Modèles du primaire. Pour une autre école : dupliquer et changer l'en-tête / les épreuves.
-import type { PrimaireHeader, PrimaireTemplate } from './primaire.types';
+// src/features/bulletin/primaire.types.ts
+// Bulletins du primaire PROFNOTE : « notes » (CE/CM) et « compétences » (CI/CP).
+import type { Rounding } from './bulletin.types';
 
-const HEADER: PrimaireHeader = {
-  country: 'RÉPUBLIQUE DU BÉNIN',
-  ministryLines: ['Ministère des Enseignements Maternel et Primaire'],
-  schoolName: 'Complexe Scolaire Bilingue « SAINTE COLETTE »',
-  schoolLines: ['Allada'],
-};
+export type PrimaireKind = 'notes' | 'competences';
 
-const ATTITUDES = [
-  'Assiduité',
-  'Discipline',
-  "Défauts majeurs identifiés chez l'élève",
-  'Qualités remarquables',
-];
+export type SymboleNiveau =
+  | 'tres-satisfaisant'
+  | 'satisfaisant'
+  | 'peu-satisfaisant'
+  | 'acceptable'
+  | 'insuffisant'
+  | 'tres-insuffisant';
 
-export const PRIMAIRE_CE_CM: PrimaireTemplate = {
-  id: 'primaire-ce-cm-trimestre',
-  name: 'Primaire CE / CM — évaluation sommative (notes sur 20)',
-  kind: 'notes',
-  rounding: 'truncate',
-  header: HEADER,
-  title: 'ÉVALUATION SOMMATIVE TRIMESTRIELLE',
-  moyenneSur: 10,
-  attitudes: ATTITUDES,
-  analyseLabel: "Analyse pédagogique sommaire des résultats et recommandations de l'enseignant(e) aux parents",
-  epreuves: [
-    { key: 'com_orale', label: 'Français — Communication orale', sur: 20 },
-    { key: 'expr_ecrite', label: 'Français — Expression écrite', sur: 20 },
-    { key: 'lecture', label: 'Français — Lecture', sur: 20 },
-    { key: 'dictee', label: 'Français — Orthographe / Dictée', sur: 20 },
-    { key: 'maths', label: 'Mathématique', sur: 20 },
-    { key: 'es_ecrit', label: 'Éducation sociale (écrite)', sur: 20 },
-    { key: 'es_oral', label: 'Éducation sociale (orale)', sur: 20, optional: true },
-    { key: 'est_ecrit', label: 'Éducation scientifique & technologique (écrite)', sur: 20 },
-    { key: 'est_oral', label: 'Éducation scientifique & technologique (orale)', sur: 20, optional: true },
-    { key: 'poesie', label: 'EA Poésie', sur: 20 },
-    { key: 'anglais', label: 'Anglais', sur: 20 },
-    { key: 'dessin', label: 'EA / Dessin', sur: 20 },
-    { key: 'couture', label: 'Couture', sur: 20, optional: true },
-    { key: 'eps', label: 'EPS', sur: 20 },
-  ],
-};
+export type SymboleForme = 'smile' | 'circle' | 'D';
 
-export const PRIMAIRE_CI_CP: PrimaireTemplate = {
-  id: 'primaire-ci-cp-competences',
-  name: 'Primaire CI / CP — évaluation par compétences',
-  kind: 'competences',
-  rounding: 'truncate',
-  header: HEADER,
-  title: 'ÉVALUATION SOMMATIVE TRIMESTRIELLE OU DU MOIS',
-  moyenneSur: 20,
-  attitudes: ATTITUDES,
-  analyseLabel: "Recommandations de l'enseignant(e) aux parents",
-  epreuves: [
-    { key: 'com_orale', label: 'Communication orale', sur: 20, seuil: 10, optional: true },
-    { key: 'expr_ecrite', label: 'Expression écrite', sur: 20, seuil: 10 },
-    { key: 'lecture', label: "Lecture (compréhension de l'écrit)", sur: 20, seuil: 10 },
-    { key: 'dictee', label: 'Orthographe / Dictée', sur: 20, seuil: 10 },
-    { key: 'maths', label: 'Mathématiques', sur: 20, seuil: 10 },
-    { key: 'es_ecrit', label: 'ES (écrit)', sur: 20, seuil: 10, optional: true },
-    { key: 'es_oral', label: 'ES (orale)', sur: 20, seuil: 10, optional: true },
-    { key: 'est_ecrit', label: 'EST (écrit)', sur: 20, seuil: 10, optional: true },
-    { key: 'est_oral', label: 'EST (orale)', sur: 20, seuil: 10, optional: true },
-    { key: 'dessin', label: 'EA Dessin / Couture', sur: 20, seuil: 10 },
-    { key: 'vivant', label: 'EA Vivant', sur: 20, seuil: 10 },
-    { key: 'eps', label: 'EPS', sur: 20, seuil: 10 },
-  ],
-};
+export interface EpreuveDef {
+  key: string;
+  label: string;
+  /** Barème (« Sur » / pondération), 20 par défaut */
+  sur: number;
+  /** CI/CP : note minimale exigée pour réussir l'épreuve (critère minimal) */
+  seuil?: number;
+  /** Ligne laissée vide si l'épreuve n'est pas évaluée */
+  optional?: boolean;
+}
 
-export const PRIMAIRE_TEMPLATES: PrimaireTemplate[] = [PRIMAIRE_CE_CM, PRIMAIRE_CI_CP];
+export interface PrimaireHeader {
+  country: string;
+  ministryLines: string[];
+  schoolName: string;
+  schoolLines: string[];
+  logoUrl?: string;
+}
+
+export interface PrimaireTemplate {
+  id: string;
+  name: string;
+  kind: PrimaireKind;
+  rounding: Rounding;
+  header: PrimaireHeader;
+  title: string;
+  epreuves: EpreuveDef[];
+  /** Moyenne = total obtenu / total des barèmes × moyenneSur (10 pour CE/CM, 20 pour CI/CP) */
+  moyenneSur: number;
+  /** CI/CP : nombre minimal d'épreuves réussies pour « atteint le seuil » (défaut : toutes) */
+  minReussies?: number;
+  /** Rubriques « Attitudes » (assiduité, discipline…) */
+  attitudes: string[];
+  /** Libellé de la zone texte pour les parents */
+  analyseLabel: string;
+  chefLabel?: string;
+  signatureLabel?: string;
+  stampUrl?: string;
+  signatureUrl?: string;
+  teacherSignatureUrl?: string;
+  directorSignatureUrl?: string;
+}
+
+export interface EpreuveScore {
+  note?: number | null;
+  /** Remplace le barème du modèle pour cette épreuve */
+  sur?: number;
+  appreciation?: string;
+}
+
+export interface PrimaireData {
+  schoolYear: string;
+  periodLabel: string;
+  student: {
+    fullName: string;
+    sex?: 'M' | 'F';
+    matricule?: string;
+    classe: string;
+    effectif: number;
+  };
+  /** clé = EpreuveDef.key */
+  scores: Record<string, EpreuveScore>;
+  rang?: string;
+  plusForte?: number;
+  plusFaible?: number;
+  /** clé = libellé de PrimaireTemplate.attitudes */
+  attitudes: Record<string, string>;
+  analyse?: string;
+  /** CE/CM : symbole mérité par l'élève */
+  symbole?: SymboleForme;
+  /** CI/CP : grille mensuelle, clé = mois (« Oct », « Nov »…) */
+  symbolesMensuels?: Record<string, SymboleNiveau>;
+  titulaire?: string;
+  directeur?: string;
+  reponseParents?: string;
+  parentNom?: string;
+  place: string;
+  date: string;
+}
