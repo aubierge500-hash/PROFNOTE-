@@ -316,6 +316,7 @@ export async function loadClassBulletins(
   supabase: SupabaseLike,
   classId: string,
   period: number,
+  templateId?: string,
 ): Promise<ClassBulletins> {
   const [cls, stu, evs] = await Promise.all([
     supabase.from('classes').select('id,name,level,school_year,period_count').eq('id', classId).single(),
@@ -347,8 +348,12 @@ export async function loadClassBulletins(
     grades = (g.data as GradeRow[]).map((x) => ({ ...x, score: x.score === null ? null : Number(x.score) }));
   }
 
-  const template = pickTemplate(c);
-  if (isPrimaire(c)) {
+  const chosen = templateId
+    ? [...BULLETIN_TEMPLATES, ...PRIMAIRE_TEMPLATES].find((t) => t.id === templateId)
+    : undefined;
+  const template = chosen ?? pickTemplate(c);
+  const primaire = chosen ? PRIMAIRE_TEMPLATES.some((t) => t.id === chosen.id) : isPrimaire(c);
+  if (primaire) {
     return {
       class: c,
       template,
