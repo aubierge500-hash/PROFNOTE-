@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import BulletinSheet from './BulletinSheet';
 import PrimaireSheet from './PrimaireSheet';
+import BulletinEditor from './BulletinEditor';
 import BulletinSettingsForm, {
   type BulletinImageKey,
 } from './BulletinSettings';
@@ -12,6 +13,15 @@ import {
   type ClassRow,
   type SupabaseLike,
 } from './bulletin.data';
+import {
+  loadEntries,
+  mergePrimaire,
+  mergeSecondaire,
+  saveEntry,
+  type BulletinEntry,
+} from './bulletin.entries';
+import { BULLETIN_TEMPLATES } from './bulletin.templates';
+import { PRIMAIRE_TEMPLATES } from './primaire.templates';
 import type { BulletinTemplate, BulletinData } from './bulletin.types';
 import type { PrimaireTemplate, PrimaireData } from './primaire.types';
 import {
@@ -48,6 +58,24 @@ type AuthClient = SupabaseLike & {
   };
 };
 
+const BATCH_CSS = `
+@media print {
+  .bulletin-batch { position: absolute !important; left: 0; top: 0; width: 100% !important; }
+  .bulletin-batch .bulletin-print,
+  .bulletin-batch .primaire-print {
+    position: static !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    break-after: page;
+    page-break-after: always;
+  }
+  .bulletin-batch > :last-child .bulletin-print,
+  .bulletin-batch > :last-child .primaire-print {
+    break-after: auto;
+    page-break-after: auto;
+  }
+}`;
+
 const imageLabels: Record<BulletinImageKey, string> = {
   logoUrl: 'Logo',
   stampUrl: 'Cachet',
@@ -77,6 +105,13 @@ export default function BulletinPage({
   const [uploadingKey, setUploadingKey] =
     useState<BulletinImageKey | null>(null);
   const [settingsMessage, setSettingsMessage] = useState('');
+  const [templateId, setTemplateId] = useState('');
+  const [entries, setEntries] = useState<Record<string, BulletinEntry>>({});
+  const [draft, setDraft] = useState<{ id: string; entry: BulletinEntry } | null>(null);
+  const [showEditor, setShowEditor] = useState(false);
+  const [batch, setBatch] = useState(false);
+  const [entrySaving, setEntrySaving] = useState(false);
+  const [entryMessage, setEntryMessage] = useState('');
 
   const authClient = supabase as AuthClient;
 
@@ -289,7 +324,7 @@ export default function BulletinPage({
     setError('');
     setStudentIdx(0);
 
-    loadClassBulletins(supabase, classId, period)
+    loadClassBulletins(supabase, classId, period, templateId || undefined)
       .then((data) => {
         if (active) setResult(data);
       })
@@ -300,6 +335,22 @@ export default function BulletinPage({
         if (active) setLoading(false);
       });
 
+    return () => {
+      active = false;
+    };
+  }, [supabase, classId, period, templateId]);
+
+  useEffect(() => {
+    if (!classId) return;
+    let active = true;
+    setEntryMessage('');
+    loadEntries(supabase, classId, period)
+      .then((e) => {
+        if (active) setEntries(e);
+      })
+      .catch((e) => {
+        if (active) setEntryMessage(`Chargement des saisies impossible : ${e instanceof Error ? e.message : String(e)}`);
+      });
     return () => {
       active = false;
     };
@@ -318,6 +369,69 @@ export default function BulletinPage({
         ? secondaryStudents
         : [];
 
+  const currentRow = list[studentIdx];
+  const currentId = currentRow?.student.id ?? '';
+  const draftEntry = draft && draft.id === currentId ? draft.entry : undefined;
+  const savedEntry = currentId ? entries[currentId] : undefined;
+  const activeEntry = draftEntry ?? savedEntry;
+
+  const baseEntry = (): BulletinEntry => {
+    if (result?.kind === 'primaire' && primaryStudents[studentIdx]) {
+      const d = primaryStudents[studentIdx].data as PrimaireData;
+      return {
+        attitudes: d.attitudes,
+        analyse: d.analyse,
+        symbole: d.symbole,
+        symbolesMensuels: d.symbolesMensuels,
+        titulaire: d.titulaire,
+        directeur: d.directeur,
+        reponseParents: d.reponseParents,
+        parentNom: d.parentNom,
+        place: d.place,
+        date: d.date,
+      };
+    }
+    if (result?.kind === 'secondaire' && secondaryStudents[studentIdx]) {
+      const d = secondaryStudents[studentIdx].data as BulletinData;
+      return {
+        conduite: d.conduite,
+        decisionsChecked: d.decisionsChecked,
+        chefAppreciation: d.chefAppreciation,
+        place: d.place,
+        date: d.date,
+      };
+    }
+    return {};
+  };
+
+  const editorValue: BulletinEntry = { ...baseEntry(), ...(activeEntry ?? {}) };
+
+  const saveCurrentEntry = async () => {
+    if (!currentId) return;
+    setEntrySaving(true);
+    setEntryMessage('');
+    try {
+      if (!authClient.auth) {
+        throw new Error('La connexion utilisateur est indisponible.');
+      }
+      const { data: authData, error: authError } = await authClient.auth.getUser();
+      if (authError) throw authError;
+      const user = authData.user;
+      if (!user) throw new Error('Connectez-vous avant d’enregistrer.');
+
+      await saveEntry(supabase, user.id, classId, period, currentId, editorValue);
+      setEntries((prev) => ({ ...prev, [currentId]: editorValue }));
+      setDraft(null);
+      setEntryMessage('Saisie enregistrée.');
+    } catch (e) {
+      setEntryMessage(
+        `Enregistrement impossible : ${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      setEntrySaving(false);
+    }
+  };
+
   const applyHeaderSettings = <
     T extends {
       header: {
@@ -328,35 +442,93 @@ export default function BulletinPage({
         logoUrl?: string;
       };
       title: string;
+      chefLabel?: string;
+      signatureLabel?: string;
+      stampUrl?: string;
+      signatureUrl?: string;
+      teacherSignatureUrl?: string;
+      directorSignatureUrl?: string;
     },
   >(
     template: T,
-  ): T => ({
-    ...template,
-    header: {
-      ...template.header,
-      country: settings.country.trim() || template.header.country,
-      ministryLines: settings.ministryLines.trim()
-        ? settings.ministryLines
-            .split('\n')
-            .map((line) => line.trim())
-            .filter(Boolean)
-        : template.header.ministryLines,
-      schoolName:
-        settings.schoolName.trim() || template.header.schoolName,
-      schoolLines: settings.schoolLines.trim()
-        ? settings.schoolLines
-            .split('\n')
-            .map((line) => line.trim())
-            .filter(Boolean)
-        : template.header.schoolLines,
-      logoUrl: settings.logoUrl.trim() || template.header.logoUrl,
-    },
-    title: settings.title.trim() || template.title,
-  });
+  ): T => {
+    const lines = (value: string): string[] =>
+      value
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+    return {
+      ...template,
+      header: {
+        ...template.header,
+        country: settings.country.trim() || template.header.country,
+        ministryLines: settings.ministryLines.trim()
+          ? lines(settings.ministryLines)
+          : template.header.ministryLines,
+        schoolName:
+          settings.schoolName.trim() || template.header.schoolName,
+        schoolLines: settings.schoolLines.trim()
+          ? lines(settings.schoolLines)
+          : template.header.schoolLines,
+        logoUrl: settings.logoUrl.trim() || template.header.logoUrl,
+      },
+      title: settings.title.trim() || template.title,
+      chefLabel:
+        settings.chefLabel.trim() &&
+        settings.chefLabel !== DEFAULT_BULLETIN_SETTINGS.chefLabel
+          ? settings.chefLabel.trim()
+          : template.chefLabel,
+      signatureLabel:
+        settings.signatureLabel.trim() &&
+        settings.signatureLabel !== DEFAULT_BULLETIN_SETTINGS.signatureLabel
+          ? settings.signatureLabel.trim()
+          : template.signatureLabel,
+      stampUrl: settings.stampUrl.trim() || template.stampUrl,
+      signatureUrl: settings.signatureUrl.trim() || template.signatureUrl,
+      teacherSignatureUrl:
+        settings.teacherSignatureUrl.trim() || template.teacherSignatureUrl,
+      directorSignatureUrl:
+        settings.directorSignatureUrl.trim() || template.directorSignatureUrl,
+    };
+  };
+
+  const allTemplates: { id: string; name: string }[] = [
+    ...BULLETIN_TEMPLATES,
+    ...PRIMAIRE_TEMPLATES,
+  ];
+
+  const renderSheet = (index: number) => {
+    if (result?.kind === 'primaire') {
+      const row = primaryStudents[index];
+      if (!row) return null;
+      const entry = index === studentIdx ? activeEntry : entries[row.student.id];
+      return (
+        <PrimaireSheet
+          key={row.student.id}
+          template={applyHeaderSettings(result.template as PrimaireTemplate)}
+          data={mergePrimaire(row.data as PrimaireData, entry)}
+        />
+      );
+    }
+    if (result?.kind === 'secondaire') {
+      const row = secondaryStudents[index];
+      if (!row) return null;
+      const entry = index === studentIdx ? activeEntry : entries[row.student.id];
+      return (
+        <BulletinSheet
+          key={row.student.id}
+          template={applyHeaderSettings(result.template as BulletinTemplate)}
+          data={mergeSecondaire(row.data as BulletinData, entry)}
+        />
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="p-3 space-y-3">
+      <style>{BATCH_CSS}</style>
       <div className="flex flex-wrap items-center gap-2">
         <select
           className="border rounded px-2 py-1"
@@ -384,7 +556,20 @@ export default function BulletinPage({
           ))}
         </select>
 
-        {list.length > 0 && (
+        <select
+          className="border rounded px-2 py-1"
+          value={templateId}
+          onChange={(e) => setTemplateId(e.target.value)}
+        >
+          <option value="">Modèle automatique</option>
+          {allTemplates.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+
+        {list.length > 0 && !batch && (
           <select
             className="border rounded px-2 py-1"
             value={studentIdx}
@@ -403,8 +588,31 @@ export default function BulletinPage({
           className="bg-blue-600 text-white rounded px-3 py-1"
           onClick={() => window.print()}
         >
-          Imprimer / PDF
+          {batch ? 'Imprimer toute la classe' : 'Imprimer / PDF'}
         </button>
+
+        {list.length > 0 && (
+          <button
+            type="button"
+            className="border rounded px-3 py-1"
+            onClick={() => {
+              setBatch((v) => !v);
+              setShowEditor(false);
+            }}
+          >
+            {batch ? 'Revenir à un élève' : 'Toute la classe'}
+          </button>
+        )}
+
+        {list.length > 0 && !batch && (
+          <button
+            type="button"
+            className="border rounded px-3 py-1"
+            onClick={() => setShowEditor((v) => !v)}
+          >
+            {showEditor ? 'Fermer la saisie' : 'Saisir / modifier'}
+          </button>
+        )}
 
         <button
           type="button"
@@ -440,6 +648,19 @@ export default function BulletinPage({
         </div>
       )}
 
+      {showEditor && !batch && result && currentRow && (
+        <BulletinEditor
+          studentName={`${currentRow.student.last_name} ${currentRow.student.first_name}`}
+          kind={result.kind}
+          template={result.template}
+          value={editorValue}
+          onChange={(next) => setDraft({ id: currentId, entry: next })}
+          onSave={saveCurrentEntry}
+          saving={entrySaving}
+          message={entryMessage}
+        />
+      )}
+
       {loading && <p>Chargement…</p>}
 
       {error && (
@@ -450,31 +671,14 @@ export default function BulletinPage({
         <p>Aucun élève dans cette classe.</p>
       )}
 
-      {!loading &&
-        result?.kind === 'primaire' &&
-        primaryStudents[studentIdx] && (
-          <PrimaireSheet
-            template={applyHeaderSettings(
-              result.template as PrimaireTemplate,
-            )}
-            data={
-              primaryStudents[studentIdx].data as PrimaireData
-            }
-          />
-        )}
+      {!loading && batch && (
+        <div className="bulletin-batch space-y-4">
+          {list.map((_, i) => renderSheet(i))}
+        </div>
+      )}
 
-      {!loading &&
-        result?.kind === 'secondaire' &&
-        secondaryStudents[studentIdx] && (
-          <BulletinSheet
-            template={applyHeaderSettings(
-              result.template as BulletinTemplate,
-            )}
-            data={
-              secondaryStudents[studentIdx].data as BulletinData
-            }
-          />
-        )}
+      {!loading && !batch && renderSheet(studentIdx)}
     </div>
   );
-}
+      }
+          
