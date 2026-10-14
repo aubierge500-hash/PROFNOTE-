@@ -68,6 +68,11 @@ export const PRIMAIRE_CI_CP: PrimaireTemplate = {
     { key: 'vivant', label: 'EA Vivant', sur: 20, seuil: 10 },
     { key: 'eps', label: 'EPS', sur: 20, seuil: 10 },
   ],
-};
+  stampUrl?: string;
+  signatureUrl?: string;
+  teacherSignatureUrl?: string;
+  directorSignatureUrl?: string;
+  chefLabel?: string;
+  signatureLabel?: string;};
 
 export const PRIMAIRE_TEMPLATES: PrimaireTemplate[] = [PRIMAIRE_CE_CM, PRIMAIRE_CI_CP];
