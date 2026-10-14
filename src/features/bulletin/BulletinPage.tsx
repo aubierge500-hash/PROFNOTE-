@@ -186,10 +186,22 @@ export default function BulletinPage({
     };
   }, [supabase, classId, period]);
 
+  const primaryStudents =
+    result?.kind === 'primaire'
+      ? result.primaire ?? []
+      : [];
+
+  const secondaryStudents =
+    result?.kind === 'secondaire'
+      ? result.secondaire ?? []
+      : [];
+
   const list =
     result?.kind === 'primaire'
-      ? result.primaire
-      : result?.secondaire;
+      ? primaryStudents
+      : result?.kind === 'secondaire'
+        ? secondaryStudents
+        : [];
 
   const applyHeaderSettings = <
     T extends {
@@ -257,7 +269,7 @@ export default function BulletinPage({
           ))}
         </select>
 
-        {list && list.length > 0 && (
+        {list.length > 0 && (
           <select
             className="border rounded px-2 py-1"
             value={studentIdx}
@@ -312,37 +324,40 @@ export default function BulletinPage({
       )}
 
       {loading && <p>Chargement…</p>}
-      {error && <p className="text-red-600">Erreur : {error}</p>}
 
-      {!loading && list?.length === 0 && (
+      {error && (
+        <p className="text-red-600">Erreur : {error}</p>
+      )}
+
+      {!loading && result && list.length === 0 && (
         <p>Aucun élève dans cette classe.</p>
       )}
 
-      {!loading && result?.kind === 'primaire' && (
-        result.primaire[studentIdx] ? (
+      {!loading &&
+        result?.kind === 'primaire' &&
+        primaryStudents[studentIdx] && (
           <PrimaireSheet
             template={applyHeaderSettings(
               result.template as PrimaireTemplate,
             )}
             data={
-              result.primaire[studentIdx].data as PrimaireData
+              primaryStudents[studentIdx].data as PrimaireData
             }
           />
-        ) : null
-      )}
+        )}
 
-      {!loading && result?.kind === 'secondaire' && (
-        result.secondaire[studentIdx] ? (
+      {!loading &&
+        result?.kind === 'secondaire' &&
+        secondaryStudents[studentIdx] && (
           <BulletinSheet
             template={applyHeaderSettings(
               result.template as BulletinTemplate,
             )}
             data={
-              result.secondaire[studentIdx].data as BulletinData
+              secondaryStudents[studentIdx].data as BulletinData
             }
           />
-        ) : null
-      )}
+        )}
     </div>
   );
 }
