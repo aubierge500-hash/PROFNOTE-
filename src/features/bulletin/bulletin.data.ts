@@ -7,6 +7,7 @@ import type { BulletinData, BulletinTemplate, SubjectScore } from './bulletin.ty
 import { computePrimaire } from './primaire.compute';
 import { PRIMAIRE_TEMPLATES } from './primaire.templates';
 import type { PrimaireData, PrimaireTemplate } from './primaire.types';
+import { applyTemplateOverride, type TemplateOverrides } from './bulletin.template-edit';
 
 /* ------------------------------------------------------------------ */
 /* Types des lignes lues dans Supabase                                  */
@@ -99,9 +100,21 @@ const ALIASES: Record<string, string[]> = {
   est: ['est_ecrit'],
 };
 
-function resolveKey(subject: string, validKeys: Set<string>): string | null {
-  const cands = ALIASES[normalizeSubject(subject)] ?? [];
-  return cands.find((k) => validKeys.has(k)) ?? null;
+function resolveKey(
+  subject: string,
+  validKeys: Set<string>,
+  labelKeys?: Map<string, string>,
+): string | null {
+  const norm = normalizeSubject(subject);
+  const cands = ALIASES[norm] ?? [];
+  const found = cands.find((k) => validKeys.has(k));
+  if (found) return found;
+  // matière ajoutée par l'enseignant : on la retrouve par son nom (ou sa clé)
+  return labelKeys?.get(norm) ?? (validKeys.has(norm) ? norm : null);
+}
+
+function labelMap(items: { key: string; label: string }[]): Map<string, string> {
+  return new Map(items.map((i) => [normalizeSubject(i.label), i.key]));
 }
 
 /* ------------------------------------------------------------------ */
@@ -148,6 +161,7 @@ function gatherScores(
   evals: EvaluationRow[],
   grades: GradeRow[],
   validKeys: Set<string>,
+  labelKeys?: Map<string, string>,
 ): Record<string, PerSubject> {
   const byEval = new Map(evals.map((e) => [e.id, e]));
   const mine = grades
@@ -161,7 +175,7 @@ function gatherScores(
   const all: Record<string, number[]> = {};
 
   for (const { g, e } of mine) {
-    const key = resolveKey(e.subject, validKeys);
+    const key = resolveKey(e.subject, validKeys, labelKeys);
     if (!key) continue;
     const v = to20(g.score as number, e.max_score);
     (all[key] ??= []).push(v);
@@ -189,11 +203,12 @@ export function buildSecondaire(
   extra: { school?: string; place?: string } = {},
 ): { student: StudentRow; data: BulletinData; moyenne: number | null }[] {
   const keys = new Set(t.groups.flatMap((g) => g.subjects.map((s) => s.key)));
+  const labels = labelMap(t.groups.flatMap((g) => g.subjects));
   const pEvals = evals.filter((e) => e.period === period);
   const today = new Date().toLocaleDateString('fr-FR');
 
   const rows = students.map((s) => {
-    const gathered = gatherScores(s.id, pEvals, grades, keys);
+    const gathered = gatherScores(s.id, pEvals, grades, keys, labels);
     const scores: Record<string, SubjectScore> = {};
     for (const [k, v] of Object.entries(gathered)) {
       scores[k] = {
@@ -249,11 +264,12 @@ export function buildPrimaire(
   extra: { place?: string } = {},
 ): { student: StudentRow; data: PrimaireData; moyenne: number | null }[] {
   const keys = new Set(t.epreuves.map((e) => e.key));
+  const labels = labelMap(t.epreuves);
   const pEvals = evals.filter((e) => e.period === period);
   const today = new Date().toLocaleDateString('fr-FR');
 
   const rows = students.map((s) => {
-    const gathered = gatherScores(s.id, pEvals, grades, keys);
+    const gathered = gatherScores(s.id, pEvals, grades, keys, labels);
     const scores: PrimaireData['scores'] = {};
     for (const [k, v] of Object.entries(gathered)) {
       const m = mean(v.all);
@@ -317,6 +333,7 @@ export async function loadClassBulletins(
   classId: string,
   period: number,
   templateId?: string,
+  overrides?: TemplateOverrides,
 ): Promise<ClassBulletins> {
   const [cls, stu, evs] = await Promise.all([
     supabase.from('classes').select('id,name,level,school_year,period_count').eq('id', classId).single(),
@@ -351,7 +368,8 @@ export async function loadClassBulletins(
   const chosen = templateId
     ? [...BULLETIN_TEMPLATES, ...PRIMAIRE_TEMPLATES].find((t) => t.id === templateId)
     : undefined;
-  const template = chosen ?? pickTemplate(c);
+  const baseTemplate = chosen ?? pickTemplate(c);
+  const template = applyTemplateOverride(baseTemplate, overrides?.[baseTemplate.id]);
   const primaire = chosen ? PRIMAIRE_TEMPLATES.some((t) => t.id === chosen.id) : isPrimaire(c);
   if (primaire) {
     return {
