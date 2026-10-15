@@ -3,6 +3,15 @@ import { useEffect, useState } from 'react';
 import BulletinSheet from './BulletinSheet';
 import PrimaireSheet from './PrimaireSheet';
 import BulletinEditor from './BulletinEditor';
+import TemplateEditor from './TemplateEditor';
+import {
+  applyTemplateOverride,
+  loadTemplateOverrides,
+  resetTemplateOverride,
+  saveTemplateOverride,
+  type TemplateOverride,
+  type TemplateOverrides,
+} from './bulletin.template-edit';
 import BulletinSettingsForm, {
   type BulletinImageKey,
 } from './BulletinSettings';
@@ -14,10 +23,13 @@ import {
   type SupabaseLike,
 } from './bulletin.data';
 import {
+  diffScores,
+  finalizePrimaire,
+  finalizeSecondaire,
   loadEntries,
-  mergePrimaire,
-  mergeSecondaire,
+  overlayScores,
   saveEntry,
+  type ScoreOverride,
   type BulletinEntry,
 } from './bulletin.entries';
 import { BULLETIN_TEMPLATES } from './bulletin.templates';
@@ -112,6 +124,12 @@ export default function BulletinPage({
   const [batch, setBatch] = useState(false);
   const [entrySaving, setEntrySaving] = useState(false);
   const [entryMessage, setEntryMessage] = useState('');
+  const [overrides, setOverrides] = useState<TemplateOverrides>({});
+  const [overridesReady, setOverridesReady] = useState(false);
+  const [tplDraft, setTplDraft] = useState<TemplateOverride | null>(null);
+  const [showTplEditor, setShowTplEditor] = useState(false);
+  const [tplSaving, setTplSaving] = useState(false);
+  const [tplMessage, setTplMessage] = useState('');
 
   const authClient = supabase as AuthClient;
 
@@ -314,7 +332,24 @@ export default function BulletinPage({
   const periods = cls?.period_count === 2 ? [1, 2] : [1, 2, 3];
 
   useEffect(() => {
-    if (!classId) {
+    let active = true;
+    loadTemplateOverrides(supabase)
+      .then((o) => {
+        if (active) setOverrides(o);
+      })
+      .catch(() => {
+        /* table absente ou hors ligne : on garde les modèles d'origine */
+      })
+      .finally(() => {
+        if (active) setOverridesReady(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!classId || !overridesReady) {
       setResult(null);
       return;
     }
@@ -324,7 +359,7 @@ export default function BulletinPage({
     setError('');
     setStudentIdx(0);
 
-    loadClassBulletins(supabase, classId, period, templateId || undefined)
+    loadClassBulletins(supabase, classId, period, templateId || undefined, overrides)
       .then((data) => {
         if (active) setResult(data);
       })
@@ -338,7 +373,7 @@ export default function BulletinPage({
     return () => {
       active = false;
     };
-  }, [supabase, classId, period, templateId]);
+  }, [supabase, classId, period, templateId, overrides, overridesReady]);
 
   useEffect(() => {
     if (!classId) return;
@@ -379,6 +414,7 @@ export default function BulletinPage({
     if (result?.kind === 'primaire' && primaryStudents[studentIdx]) {
       const d = primaryStudents[studentIdx].data as PrimaireData;
       return {
+        scores: d.scores,
         attitudes: d.attitudes,
         analyse: d.analyse,
         symbole: d.symbole,
@@ -394,6 +430,7 @@ export default function BulletinPage({
     if (result?.kind === 'secondaire' && secondaryStudents[studentIdx]) {
       const d = secondaryStudents[studentIdx].data as BulletinData;
       return {
+        scores: d.scores,
         conduite: d.conduite,
         decisionsChecked: d.decisionsChecked,
         chefAppreciation: d.chefAppreciation,
@@ -404,7 +441,13 @@ export default function BulletinPage({
     return {};
   };
 
-  const editorValue: BulletinEntry = { ...baseEntry(), ...(activeEntry ?? {}) };
+  const base = baseEntry();
+  const baseScores: Record<string, ScoreOverride> = base.scores ?? {};
+  const editorValue: BulletinEntry = {
+    ...base,
+    ...(activeEntry ?? {}),
+    scores: overlayScores(baseScores, activeEntry?.scores),
+  };
 
   const saveCurrentEntry = async () => {
     if (!currentId) return;
@@ -419,8 +462,12 @@ export default function BulletinPage({
       const user = authData.user;
       if (!user) throw new Error('Connectez-vous avant d’enregistrer.');
 
-      await saveEntry(supabase, user.id, classId, period, currentId, editorValue);
-      setEntries((prev) => ({ ...prev, [currentId]: editorValue }));
+      const toSave: BulletinEntry = {
+        ...editorValue,
+        scores: diffScores(baseScores, editorValue.scores),
+      };
+      await saveEntry(supabase, user.id, classId, period, currentId, toSave);
+      setEntries((prev) => ({ ...prev, [currentId]: toSave }));
       setDraft(null);
       setEntryMessage('Saisie enregistrée.');
     } catch (e) {
@@ -493,35 +540,102 @@ export default function BulletinPage({
     };
   };
 
+  const activeTemplateId = result?.template.id ?? '';
+  const savedOverride: TemplateOverride | undefined = overrides[activeTemplateId];
+
+  const effectiveTemplate = (
+    template: BulletinTemplate | PrimaireTemplate,
+  ): BulletinTemplate | PrimaireTemplate =>
+    applyTemplateOverride(applyHeaderSettings(template), {
+      ...(savedOverride ?? {}),
+      ...(tplDraft ?? {}),
+    });
+
+  const saveTemplate = async () => {
+    if (!activeTemplateId) return;
+    setTplSaving(true);
+    setTplMessage('');
+    try {
+      if (!authClient.auth) {
+        throw new Error('La connexion utilisateur est indisponible.');
+      }
+      const { data: authData, error: authError } = await authClient.auth.getUser();
+      if (authError) throw authError;
+      const user = authData.user;
+      if (!user) throw new Error('Connectez-vous avant d’enregistrer.');
+
+      const merged: TemplateOverride = { ...(savedOverride ?? {}), ...(tplDraft ?? {}) };
+      await saveTemplateOverride(supabase, user.id, activeTemplateId, merged);
+      setTplDraft(null);
+      setOverrides((prev) => ({ ...prev, [activeTemplateId]: merged }));
+      setTplMessage('Modèle enregistré. Les rangs sont recalculés.');
+    } catch (e) {
+      setTplMessage(`Enregistrement impossible : ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setTplSaving(false);
+    }
+  };
+
+  const resetTemplate = async () => {
+    if (!activeTemplateId) return;
+    setTplSaving(true);
+    setTplMessage('');
+    try {
+      if (!authClient.auth) {
+        throw new Error('La connexion utilisateur est indisponible.');
+      }
+      const { data: authData, error: authError } = await authClient.auth.getUser();
+      if (authError) throw authError;
+      const user = authData.user;
+      if (!user) throw new Error('Connectez-vous avant de continuer.');
+
+      await resetTemplateOverride(supabase, user.id, activeTemplateId);
+      setTplDraft(null);
+      setOverrides((prev) => {
+        const next = { ...prev };
+        delete next[activeTemplateId];
+        return next;
+      });
+      setTplMessage('Modèle d’origine rétabli.');
+    } catch (e) {
+      setTplMessage(`Opération impossible : ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setTplSaving(false);
+    }
+  };
+
   const allTemplates: { id: string; name: string }[] = [
     ...BULLETIN_TEMPLATES,
     ...PRIMAIRE_TEMPLATES,
   ];
 
+  // saisies de la base + brouillon en cours pour l'élève affiché
+  const entriesView: Record<string, BulletinEntry> =
+    currentId && draftEntry ? { ...entries, [currentId]: draftEntry } : entries;
+
+  // moyennes, rangs, plus forte / plus faible moyenne recalculés avec les notes saisies à la main
+  const tplNow = result ? effectiveTemplate(result.template) : null;
+  const finalPrimaire =
+    result?.kind === 'primaire' && tplNow
+      ? finalizePrimaire(tplNow as PrimaireTemplate, primaryStudents as { student: { id: string }; data: PrimaireData }[], entriesView)
+      : null;
+  const finalSecondaire =
+    result?.kind === 'secondaire' && tplNow
+      ? finalizeSecondaire(tplNow as BulletinTemplate, secondaryStudents as { student: { id: string }; data: BulletinData }[], entriesView)
+      : null;
+
   const renderSheet = (index: number) => {
-    if (result?.kind === 'primaire') {
+    if (result?.kind === 'primaire' && tplNow && finalPrimaire) {
       const row = primaryStudents[index];
-      if (!row) return null;
-      const entry = index === studentIdx ? activeEntry : entries[row.student.id];
-      return (
-        <PrimaireSheet
-          key={row.student.id}
-          template={applyHeaderSettings(result.template as PrimaireTemplate)}
-          data={mergePrimaire(row.data as PrimaireData, entry)}
-        />
-      );
+      const data = row ? finalPrimaire.get(row.student.id) : undefined;
+      if (!row || !data) return null;
+      return <PrimaireSheet key={row.student.id} template={tplNow as PrimaireTemplate} data={data} />;
     }
-    if (result?.kind === 'secondaire') {
+    if (result?.kind === 'secondaire' && tplNow && finalSecondaire) {
       const row = secondaryStudents[index];
-      if (!row) return null;
-      const entry = index === studentIdx ? activeEntry : entries[row.student.id];
-      return (
-        <BulletinSheet
-          key={row.student.id}
-          template={applyHeaderSettings(result.template as BulletinTemplate)}
-          data={mergeSecondaire(row.data as BulletinData, entry)}
-        />
-      );
+      const data = row ? finalSecondaire.get(row.student.id) : undefined;
+      if (!row || !data) return null;
+      return <BulletinSheet key={row.student.id} template={tplNow as BulletinTemplate} data={data} />;
     }
     return null;
   };
@@ -614,6 +728,16 @@ export default function BulletinPage({
           </button>
         )}
 
+        {list.length > 0 && !batch && (
+          <button
+            type="button"
+            className="border rounded px-3 py-1"
+            onClick={() => setShowTplEditor((v) => !v)}
+          >
+            {showTplEditor ? 'Fermer le modèle' : 'Modifier le modèle'}
+          </button>
+        )}
+
         <button
           type="button"
           className="border rounded px-3 py-1"
@@ -658,6 +782,19 @@ export default function BulletinPage({
           onSave={saveCurrentEntry}
           saving={entrySaving}
           message={entryMessage}
+        />
+      )}
+
+      {showTplEditor && !batch && result && (
+        <TemplateEditor
+          kind={result.kind}
+          template={effectiveTemplate(result.template)}
+          onChange={(patch) => setTplDraft((prev) => ({ ...(prev ?? {}), ...patch }))}
+          onSave={saveTemplate}
+          onReset={resetTemplate}
+          saving={tplSaving}
+          hasSaved={Boolean(savedOverride)}
+          message={tplMessage}
         />
       )}
 
