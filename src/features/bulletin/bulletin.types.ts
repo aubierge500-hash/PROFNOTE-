@@ -58,6 +58,10 @@ export interface BulletinTemplate {
   disciplineItems?: string[];
   chefLabel: string;
   signatureLabel: string;
+  stampUrl?: string;
+  signatureUrl?: string;
+  teacherSignatureUrl?: string;
+  directorSignatureUrl?: string;
 }
 
 export interface SubjectScore {

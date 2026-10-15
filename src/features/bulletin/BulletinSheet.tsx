@@ -225,7 +225,18 @@ export default function BulletinSheet({ template: t, data: d }: Props) {
             <div className="flex-1 italic text-center text-[13px]">{d.chefAppreciation ?? ''}</div>
             <div className="border-t border-black pt-1 mt-2 text-center font-bold">
               {t.signatureLabel}
-              <div style={{ height: 54 }} />
+              <div className="relative flex items-center justify-center gap-2" style={{ height: 54 }}>
+                {(t.directorSignatureUrl || t.signatureUrl) && (
+                  <img
+                    src={t.directorSignatureUrl || t.signatureUrl}
+                    alt="Signature"
+                    className="max-h-[52px] max-w-[45%] object-contain"
+                  />
+                )}
+                {t.stampUrl && (
+                  <img src={t.stampUrl} alt="Cachet" className="max-h-[52px] max-w-[45%] object-contain" />
+                )}
+              </div>
             </div>
           </div>
         </div>

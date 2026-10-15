@@ -49,6 +49,12 @@ export interface PrimaireTemplate {
   attitudes: string[];
   /** Libellé de la zone texte pour les parents */
   analyseLabel: string;
+  chefLabel?: string;
+  signatureLabel?: string;
+  stampUrl?: string;
+  signatureUrl?: string;
+  teacherSignatureUrl?: string;
+  directorSignatureUrl?: string;
 }
 
 export interface EpreuveScore {
