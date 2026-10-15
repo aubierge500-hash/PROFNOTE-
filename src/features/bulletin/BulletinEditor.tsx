@@ -1,7 +1,7 @@
 // src/features/bulletin/BulletinEditor.tsx
 // Formulaire de saisie des éléments propres à chaque élève (conduite, décisions, appréciations…).
 import type { ReactNode } from 'react';
-import type { BulletinEntry } from './bulletin.entries';
+import type { BulletinEntry, ScoreOverride } from './bulletin.entries';
 import type { BulletinTemplate } from './bulletin.types';
 import type { PrimaireTemplate, SymboleForme, SymboleNiveau } from './primaire.types';
 
@@ -48,6 +48,11 @@ export default function BulletinEditor({
 }: Props) {
   const set = (patch: BulletinEntry) => onChange({ ...value, ...patch });
 
+  const scores = value.scores ?? {};
+  const setScore = (key: string, patch: ScoreOverride) =>
+    set({ scores: { ...scores, [key]: { ...(scores[key] ?? {}), ...patch } } });
+  const num = (v: string): number | null => (v === '' ? null : Number(v));
+
   const common = (
     <div className="grid grid-cols-2 gap-2">
       <div>
@@ -89,6 +94,64 @@ export default function BulletinEditor({
 
     body = (
       <>
+        <fieldset className="space-y-2">
+          <legend className={LABEL}>Notes par matière (laisser tel quel pour garder les notes de la base)</legend>
+          {t.groups
+            .flatMap((g) => g.subjects)
+            .map((sub) => {
+              const sc = scores[sub.key] ?? {};
+              return (
+                <div key={sub.key} className="rounded border p-2 space-y-1">
+                  <div className="text-sm font-semibold">{sub.label}</div>
+                  <div className="grid grid-cols-3 gap-1">
+                    {(['mi', 'dev1', 'dev2'] as const).map((f) => (
+                      <div key={f}>
+                        <label className="block text-xs text-gray-600" htmlFor={`be-${sub.key}-${f}`}>
+                          {f === 'mi' ? 'MI' : f === 'dev1' ? 'Dev 1' : 'Dev 2'}
+                        </label>
+                        <input
+                          id={`be-${sub.key}-${f}`}
+                          type="number"
+                          min={0}
+                          max={20}
+                          step={0.25}
+                          inputMode="decimal"
+                          className={INPUT}
+                          value={sc[f] ?? ''}
+                          onChange={(e) => setScore(sub.key, { [f]: num(e.target.value) })}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-3 gap-1">
+                    <div>
+                      <label className="block text-xs text-gray-600" htmlFor={`be-${sub.key}-rang`}>
+                        Rang (auto si vide)
+                      </label>
+                      <input
+                        id={`be-${sub.key}-rang`}
+                        className={INPUT}
+                        value={sc.rang ?? ''}
+                        onChange={(e) => setScore(sub.key, { rang: e.target.value })}
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-gray-600" htmlFor={`be-${sub.key}-app`}>
+                        Appréciation
+                      </label>
+                      <input
+                        id={`be-${sub.key}-app`}
+                        className={INPUT}
+                        value={sc.appreciation ?? ''}
+                        onChange={(e) => setScore(sub.key, { appreciation: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+        </fieldset>
+
         <div>
           <label className={LABEL} htmlFor="be-conduite">
             Note de conduite (/20)
@@ -143,6 +206,46 @@ export default function BulletinEditor({
 
     body = (
       <>
+        <fieldset className="space-y-2">
+          <legend className={LABEL}>Notes par épreuve (laisser tel quel pour garder les notes de la base)</legend>
+          {t.epreuves.map((ep) => {
+            const sc = scores[ep.key] ?? {};
+            return (
+              <div key={ep.key} className="rounded border p-2 space-y-1">
+                <div className="text-sm font-semibold">{ep.label}</div>
+                <div className="grid grid-cols-3 gap-1">
+                  <div>
+                    <label className="block text-xs text-gray-600" htmlFor={`be-${ep.key}-note`}>
+                      Note /{sc.sur ?? ep.sur}
+                    </label>
+                    <input
+                      id={`be-${ep.key}-note`}
+                      type="number"
+                      min={0}
+                      step={0.25}
+                      inputMode="decimal"
+                      className={INPUT}
+                      value={sc.note ?? ''}
+                      onChange={(e) => setScore(ep.key, { note: num(e.target.value) })}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs text-gray-600" htmlFor={`be-${ep.key}-app`}>
+                      Appréciation
+                    </label>
+                    <input
+                      id={`be-${ep.key}-app`}
+                      className={INPUT}
+                      value={sc.appreciation ?? ''}
+                      onChange={(e) => setScore(ep.key, { appreciation: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </fieldset>
+
         <fieldset className="space-y-2">
           <legend className={LABEL}>Attitudes</legend>
           {t.attitudes.map((a) => (
