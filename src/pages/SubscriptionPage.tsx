@@ -16,9 +16,14 @@ export default function SubscriptionPage() {
     useState<Subscription | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [retryCount, setRetryCount] = useState(0)
 
   useEffect(() => {
-    if (!user) return
+    if (!user?.id) {
+      setLoading(false)
+      setSubscription(null)
+      return
+    }
 
     let cancelled = false
 
@@ -26,23 +31,46 @@ export default function SubscriptionPage() {
       setLoading(true)
       setError('')
 
-      const { data, error: queryError } = await supabase
-        .from('subscriptions')
-        .select('status, paid_until')
-        .eq('user_id', user!.id)
-        .maybeSingle()
+      try {
+        const { data, error: queryError } = await supabase
+          .from('subscriptions')
+          .select('status, paid_until')
+          .eq('user_id', user!.id)
+          .maybeSingle()
 
-      if (cancelled) return
+        if (cancelled) return
 
-      if (queryError) {
-        setError(
-          'Impossible de vérifier votre abonnement. Veuillez réessayer.'
-        )
-      } else {
+        if (queryError) {
+          console.error(
+            '[PROFNOTE] Erreur de vérification de l’abonnement :',
+            queryError
+          )
+
+          setError(
+            'Impossible de vérifier votre abonnement. Vérifiez votre connexion puis réessayez.'
+          )
+          setSubscription(null)
+          return
+        }
+
         setSubscription(data as Subscription | null)
-      }
+      } catch (err) {
+        console.error(
+          '[PROFNOTE] Erreur inattendue :',
+          err
+        )
 
-      setLoading(false)
+        if (!cancelled) {
+          setError(
+            'Une erreur est survenue pendant la vérification. Veuillez réessayer.'
+          )
+          setSubscription(null)
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
     }
 
     void loadSubscription()
@@ -50,23 +78,44 @@ export default function SubscriptionPage() {
     return () => {
       cancelled = true
     }
-  }, [user])
+  }, [user?.id, retryCount])
 
   if (!user) {
     return <Navigate to="/connexion" replace />
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        Vérification de votre abonnement…
-      </div>
-    )
+  const paidUntilTime = subscription?.paid_until
+    ? new Date(subscription.paid_until).getTime()
+    : NaN
+
+  const subscriptionIsValid =
+    (subscription?.status === 'active' ||
+      subscription?.status === 'trial') &&
+    Number.isFinite(paidUntilTime) &&
+    paidUntilTime > Date.now()
+
+  // Si l’abonnement est valide, rétablir directement l’accès.
+  if (!loading && !error && subscriptionIsValid) {
+    return <Navigate to="/" replace />
   }
 
   const expiration = subscription?.paid_until
-    ? new Date(subscription.paid_until).toLocaleDateString('fr-FR')
+    ? new Date(subscription.paid_until)
     : null
+
+  const expirationLabel =
+    expiration && !Number.isNaN(expiration.getTime())
+      ? expiration.toLocaleDateString('fr-FR')
+      : null
+
+  const statusLabel =
+    subscription?.status === 'active'
+      ? 'Abonnement activé'
+      : subscription?.status === 'trial'
+        ? 'Essai gratuit'
+        : subscription?.status === 'expired'
+          ? 'Abonnement expiré'
+          : 'Aucun abonnement actif'
 
   return (
     <main className="min-h-screen bg-primary-50 flex items-center justify-center p-4">
@@ -76,63 +125,85 @@ export default function SubscriptionPage() {
         </p>
 
         <h1 className="text-2xl font-bold text-primary-800 mt-3">
-          Votre abonnement
+          Vérification de votre abonnement
         </h1>
 
         <p className="text-sm text-primary-500 mt-2">
           Votre compte et vos données scolaires sont conservés.
-          L’accès aux fonctionnalités sera rétabli après validation
-          de votre abonnement.
+          Cette page vérifie vos droits d’accès.
         </p>
 
-        {error && (
-          <div className="mt-5 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+        {loading && (
+          <div
+            role="status"
+            className="mt-5 rounded-lg bg-primary-50 p-4 text-sm text-primary-700"
+          >
+            Vérification de votre abonnement en cours…
+          </div>
+        )}
+
+        {!loading && error && (
+          <div
+            role="alert"
+            className="mt-5 rounded-lg bg-red-50 border border-red-200 p-4 text-sm text-red-700"
+          >
             {error}
           </div>
         )}
 
-        {!error && (
-          <div className="mt-5 rounded-lg bg-primary-50 p-4 space-y-2">
-            <p className="text-sm text-primary-600">
+        {!loading && !error && (
+          <div className="mt-5 rounded-lg bg-primary-50 p-4 space-y-3">
+            <p className="text-sm text-primary-600 break-all">
               Compte : <strong>{user.email}</strong>
             </p>
 
             <p className="text-sm text-primary-600">
-              Statut :{' '}
+              Statut : <strong>{statusLabel}</strong>
+            </p>
+
+            <p className="text-sm text-primary-600">
+              Fin d’accès :{' '}
               <strong>
-                {subscription?.status === 'trial'
-                  ? 'Essai gratuit'
-                  : subscription?.status === 'active'
-                    ? 'Abonnement'
-                    : 'À vérifier'}
+                {expirationLabel ?? 'Non définie'}
               </strong>
             </p>
 
-            {expiration && (
-              <p className="text-sm text-primary-600">
-                Date de fin enregistrée : <strong>{expiration}</strong>
+            {subscriptionIsValid ? (
+              <p className="text-sm text-green-700">
+                Abonnement valide. Ouverture de votre espace…
+              </p>
+            ) : (
+              <p className="text-sm text-red-700">
+                Votre accès n’est pas actif. Si vous venez de
+                payer ou si l’administrateur vient d’activer
+                votre abonnement, relancez la vérification.
               </p>
             )}
           </div>
         )}
 
         <div className="mt-6 space-y-3">
-          <h2 className="font-semibold text-primary-800">
-            Comment rétablir votre accès ?
-          </h2>
-
-          <p className="text-sm text-primary-600">
-            Contactez l’administration de PROFNOTE pour connaître
-            les modalités de paiement. Après vérification du
-            paiement, votre abonnement sera activé.
-          </p>
-
-          <a
-            href={`mailto:aubiergeservices@gmail.com?subject=${encodeURIComponent('Abonnement PROFNOTE')}&body=${encodeURIComponent(`Bonjour,\n\nJe souhaite activer mon abonnement PROFNOTE.\nCompte : ${user.email}\n\nMerci.`)}`}
-            className="block text-center rounded-lg bg-primary-600 text-white px-4 py-3 font-medium hover:bg-primary-700"
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() =>
+              setRetryCount((count) => count + 1)
+            }
+            className="w-full rounded-lg bg-primary-600 text-white px-4 py-3 font-medium hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Contacter l’administration
-          </a>
+            {loading
+              ? 'Vérification en cours…'
+              : 'Vérifier à nouveau mon abonnement'}
+          </button>
+
+          {!subscriptionIsValid && !loading && !error && (
+            <a
+              href={`mailto:aubiergeservices@gmail.com?subject=${encodeURIComponent('Abonnement PROFNOTE')}&body=${encodeURIComponent(`Bonjour,\n\nJe souhaite vérifier mon abonnement PROFNOTE.\nCompte : ${user.email}\nStatut affiché : ${statusLabel}\n\nMerci.`)}`}
+              className="block text-center rounded-lg border border-primary-200 px-4 py-3 text-sm font-medium text-primary-700 hover:bg-primary-50"
+            >
+              Contacter l’administration
+            </a>
+          )}
 
           <button
             type="button"
