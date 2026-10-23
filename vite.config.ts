@@ -30,22 +30,19 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // Tout ce qui compose l'application est mis en cache pour un démarrage sans internet.
+        globPatterns: ['**/*.{js,mjs,css,html,svg,png,ico,woff2,webmanifest}'],
+        // Le bundle principal embarque xlsx, jsPDF, pdf.js, mammoth, etc. : on relève la limite
+        // (5 Mo par défaut) pour qu'aucun fichier de l'application ne soit ignoré silencieusement.
+        maximumFileSizeToCacheInBytes: 15 * 1024 * 1024,
+        // Toute navigation (ex. /classes, /eleves) retombe sur l'application quand il n'y a pas de réseau.
+        navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
         clientsClaim: true,
-        skipWaiting: true,
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-api-cache',
-              networkTimeoutSeconds: 5,
-              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 }
-            }
-          }
-        ]
+        skipWaiting: true
+        // IMPORTANT : plus de runtimeCaching pour Supabase. Ce cache était commun à tous les
+        // comptes d'un même téléphone (fuite possible de données d'un enseignant à un autre).
+        // Les données sont désormais mises en cache par utilisateur dans src/lib/offlineCache.ts.
       }
     })
   ],

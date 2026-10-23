@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from './supabase'
+import { clearOfflineCache } from './offlineCache'
+import { clearAccessSnapshot, readStoredSession } from './offlineAccess'
 import type { Profile } from '@/types/database'
 
 interface AuthContextValue {
@@ -15,6 +17,9 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
+
+const MESSAGE_HORS_LIGNE =
+  'Pas de connexion internet. La connexion, l’inscription et la réinitialisation du mot de passe nécessitent internet.'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
@@ -38,11 +43,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let resolved = false
 
     const safetyTimeout = setTimeout(() => {
-      if (!resolved) {
+      if (resolved) return
+      resolved = true
+
+      // Réseau absent ou très lent : on reprend la session enregistrée sur l'appareil
+      // plutôt que de renvoyer l'enseignant vers l'écran de connexion.
+      const stored = readStoredSession()
+      if (stored) {
+        console.warn('[Auth] Délai dépassé — reprise de la session enregistrée sur cet appareil.')
+        setSession(stored)
+        void loadProfile(stored.user.id)
+      } else {
         console.warn('[Auth] Délai dépassé en attendant Supabase — affichage de la connexion par défaut.')
-        resolved = true
-        setLoading(false)
       }
+      setLoading(false)
     }, 8000)
 
     supabase.auth
@@ -60,14 +74,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!resolved) {
           resolved = true
           clearTimeout(safetyTimeout)
+          const stored = readStoredSession()
+          if (stored) {
+            setSession(stored)
+            void loadProfile(stored.user.id)
+          }
           setLoading(false)
         }
       })
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
+      // Sans réseau, Supabase peut signaler « aucune session » alors que la session existe
+      // bel et bien sur l'appareil : on ne déconnecte que sur une vraie déconnexion.
+      if (!newSession && event !== 'SIGNED_OUT' && readStoredSession()) return
+
       setSession(newSession)
       if (newSession?.user) {
-        loadProfile(newSession.user.id)
+        void loadProfile(newSession.user.id)
       } else {
         setProfile(null)
       }
@@ -80,11 +103,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   async function signIn(email: string, password: string) {
+    if (!navigator.onLine) return { error: MESSAGE_HORS_LIGNE }
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     return { error: error ? traduireErreur(error.message) : null }
   }
 
   async function signUp(email: string, password: string, fullName: string) {
+    if (!navigator.onLine) return { error: MESSAGE_HORS_LIGNE }
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -94,10 +119,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signOut() {
-    await supabase.auth.signOut()
+    try {
+      // Hors ligne, la déconnexion « globale » échoue : on se déconnecte seulement de cet appareil.
+      await supabase.auth.signOut({ scope: navigator.onLine ? 'global' : 'local' })
+    } catch (err) {
+      console.warn('[Auth] Déconnexion auprès du serveur impossible :', err)
+      try {
+        await supabase.auth.signOut({ scope: 'local' })
+      } catch {
+        // Rien de plus à faire : l'état local est réinitialisé ci-dessous.
+      }
+    }
+
+    // Les données copiées sur l'appareil appartiennent à l'enseignant qui part.
+    clearAccessSnapshot()
+    await clearOfflineCache()
+    setSession(null)
+    setProfile(null)
   }
 
   async function resetPassword(email: string) {
+    if (!navigator.onLine) return { error: MESSAGE_HORS_LIGNE }
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reinitialiser-mot-de-passe`
     })
@@ -127,4 +169,4 @@ function traduireErreur(message: string): string {
     'Password should be at least 6 characters': 'Le mot de passe doit contenir au moins 6 caractères.'
   }
   return map[message] ?? message
-      }
+}
