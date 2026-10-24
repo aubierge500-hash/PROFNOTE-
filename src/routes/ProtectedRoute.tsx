@@ -1,8 +1,8 @@
-
 import { useEffect, useState } from 'react'
 import { Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from '@/lib/AuthContext'
 import { supabase } from '@/lib/supabase'
+import { canUseOfflineAccess, isNetworkFailure, saveAccessSnapshot } from '@/lib/offlineAccess'
 
 interface AccessCheck {
   userId: string | null
@@ -26,11 +26,24 @@ export default function ProtectedRoute() {
     let cancelled = false
 
     async function verifyAccess() {
-      setCheck({
-        userId,
-        loading: true,
-        allowed: false
-      })
+      // Sans internet : on s'appuie sur la dernière vérification faite en ligne
+      // (abonnement non échu, moins de 30 jours, horloge cohérente).
+      if (!navigator.onLine) {
+        setCheck({
+          userId,
+          loading: false,
+          allowed: canUseOfflineAccess(userId!)
+        })
+        return
+      }
+
+      // Première vérification : écran d'attente. Revérification en cours d'utilisation
+      // (retour du réseau) : on laisse la page affichée pour ne perdre aucune saisie.
+      setCheck((previous) =>
+        previous.userId === userId && previous.allowed
+          ? previous
+          : { userId, loading: true, allowed: false }
+      )
 
       try {
         const [profileResult, subscriptionResult] = await Promise.all([
@@ -50,15 +63,21 @@ export default function ProtectedRoute() {
         if (cancelled) return
 
         if (profileResult.error || subscriptionResult.error) {
+          const requestError = profileResult.error ?? subscriptionResult.error
+
           console.error(
             '[Abonnement] Impossible de vérifier les droits d’accès.',
-            profileResult.error ?? subscriptionResult.error
+            requestError
           )
+
+          // Connexion coupée ou trop lente (ex. Wi-Fi sans internet) : mode hors ligne.
+          const offlineAllowed =
+            isNetworkFailure(requestError?.message) && canUseOfflineAccess(userId!)
 
           setCheck({
             userId,
             loading: false,
-            allowed: false
+            allowed: offlineAllowed
           })
           return
         }
@@ -78,10 +97,19 @@ export default function ProtectedRoute() {
             subscription?.status === 'active') &&
           dateIsValid
 
+        const allowed = isAdmin || subscriptionIsValid
+
+        // Trace de cette vérification réussie, utilisée si le réseau disparaît ensuite.
+        saveAccessSnapshot(userId!, {
+          allowed,
+          isAdmin,
+          paidUntil: subscription?.paid_until ?? null
+        })
+
         setCheck({
           userId,
           loading: false,
-          allowed: isAdmin || subscriptionIsValid
+          allowed
         })
       } catch (error) {
         console.error('[Abonnement] Erreur de vérification :', error)
@@ -90,7 +118,7 @@ export default function ProtectedRoute() {
           setCheck({
             userId,
             loading: false,
-            allowed: false
+            allowed: isNetworkFailure(error) && canUseOfflineAccess(userId!)
           })
         }
       }
@@ -98,8 +126,15 @@ export default function ProtectedRoute() {
 
     void verifyAccess()
 
+    // Quand le réseau revient, on revérifie l'abonnement pour de bon.
+    const onBackOnline = () => {
+      void verifyAccess()
+    }
+    window.addEventListener('online', onBackOnline)
+
     return () => {
       cancelled = true
+      window.removeEventListener('online', onBackOnline)
     }
   }, [userId])
 
