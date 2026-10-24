@@ -6,7 +6,8 @@ import {
   LogOut,
   MessageCircle,
   ShieldCheck,
-  FileText
+  FileText,
+  BookOpen
 } from 'lucide-react'
 import { useAuth } from '@/lib/AuthContext'
 
@@ -31,6 +32,11 @@ const navItems = [
     to: '/whatsapp',
     label: 'WhatsApp',
     icon: MessageCircle
+  },
+  {
+    to: '/guide',
+    label: "Guide d'utilisation",
+    icon: BookOpen
   }
 ]
 

@@ -18,7 +18,6 @@ import {
   parseStudentsFile,
   type ImportResult
 } from '@/lib/importStudentsFile'
-import PhotoImportButton from '@/components/PhotoImportButton'
 import type { Student } from '@/types/database'
 
 interface Props {
@@ -347,13 +346,6 @@ export default function ClassStudentsManager({
           </button>
         </div>
       </div>
-
-      <PhotoImportButton
-        classId={classId}
-        teacherId={teacherId}
-        className={className}
-        onImported={onReload}
-      />
 
       {importError && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
