@@ -2,6 +2,8 @@ import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/database'
 import { createCachedFetch } from './offlineCache'
 import { readStoredSession } from './offlineAccess'
+import { configureOffline } from './offlineNetwork'
+import { startOfflineSync, syncNow } from './offlineSync'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
@@ -19,7 +21,8 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true
   },
   global: {
-    // Les lectures réussies sont copiées sur l'appareil et resservies sans réseau.
+    // Lectures et écritures passent par la couche hors ligne : copie locale des données,
+    // file d'attente des modifications faites sans internet.
     fetch: createCachedFetch()
   }
 })
@@ -60,3 +63,37 @@ supabase.auth.getSession = (async () => {
 
   return result
 }) as unknown as typeof supabase.auth.getSession
+
+/**
+ * Envoi des modifications faites sans internet : il faut un jeton valide, renouvelé si besoin.
+ * On interroge la vraie méthode (pas la version raccourcie ci-dessus) avec un délai maximum.
+ */
+configureOffline({
+  baseUrl: supabaseUrl,
+  apiKey: supabaseAnonKey,
+  getAccessToken: async () => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('timeout')), 8000)
+    })
+
+    try {
+      const { data } = await Promise.race([originalGetSession(), timeout])
+      return data.session?.access_token ?? null
+    } finally {
+      if (timer) clearTimeout(timer)
+    }
+  }
+})
+
+startOfflineSync()
+
+// Dès qu'une session est (re)établie, on envoie ce qui attend et on prépare le mode hors ligne.
+// Le rappel est différé : il ne doit pas appeler Supabase pendant que Supabase le notifie.
+supabase.auth.onAuthStateChange((event) => {
+  if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+    setTimeout(() => {
+      void syncNow()
+    }, 0)
+  }
+})

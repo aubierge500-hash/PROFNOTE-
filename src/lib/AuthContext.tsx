@@ -3,6 +3,8 @@ import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 import { clearOfflineCache } from './offlineCache'
 import { clearAccessSnapshot, readStoredSession } from './offlineAccess'
+import { flushOutbox, getPendingCount } from './offlineOutbox'
+import { resetSyncUser } from './offlineSync'
 import type { Profile } from '@/types/database'
 
 interface AuthContextValue {
@@ -119,6 +121,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signOut() {
+    // Des modifications faites sans internet attendent encore : on tente de les envoyer d'abord.
+    if (getPendingCount() > 0 && navigator.onLine) {
+      await flushOutbox({ maxMs: 10_000 }).catch(() => undefined)
+    }
+
+    if (
+      getPendingCount() > 0 &&
+      !window.confirm(
+        'Des modifications faites sans internet ne sont pas encore envoyées. ' +
+          'Elles restent sur cet appareil et partiront à votre prochaine connexion avec ce compte. ' +
+          'Se déconnecter quand même ?'
+      )
+    ) {
+      return
+    }
+
     try {
       // Hors ligne, la déconnexion « globale » échoue : on se déconnecte seulement de cet appareil.
       await supabase.auth.signOut({ scope: navigator.onLine ? 'global' : 'local' })
@@ -131,8 +149,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // Les données copiées sur l'appareil appartiennent à l'enseignant qui part.
+    // Les données copiées sur l'appareil appartiennent à l'enseignant qui part
+    // (les modifications non envoyées, elles, sont conservées pour lui).
     clearAccessSnapshot()
+    resetSyncUser()
     await clearOfflineCache()
     setSession(null)
     setProfile(null)
