@@ -10,6 +10,8 @@ import ResetPassword from '@/pages/auth/ResetPassword'
 
 import SubscriptionPage from '@/pages/SubscriptionPage'
 import AdminSubscriptions from '@/pages/admin/AdminSubscriptions'
+import AdminReferrals from '@/pages/admin/AdminReferrals'
+import Referral from '@/pages/dashboard/Referral'
 
 import DashboardLayout from '@/components/layout/DashboardLayout'
 import Dashboard from '@/pages/dashboard/Dashboard'
@@ -61,8 +63,14 @@ export default function App() {
           element={<AdminSubscriptions />}
         />
 
+        <Route
+          path="/admin-parrainages"
+          element={<AdminReferrals />}
+        />
+
         <Route element={<DashboardLayout />}>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/parrainage" element={<Referral />} />
 
           <Route path="/classes" element={<Classes />} />
           <Route

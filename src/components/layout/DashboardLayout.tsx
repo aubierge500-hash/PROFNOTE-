@@ -7,7 +7,9 @@ import {
   MessageCircle,
   ShieldCheck,
   FileText,
-  BookOpen
+  BookOpen,
+  Gift,
+  Wallet
 } from 'lucide-react'
 import { useAuth } from '@/lib/AuthContext'
 
@@ -32,6 +34,11 @@ const navItems = [
     to: '/whatsapp',
     label: 'WhatsApp',
     icon: MessageCircle
+  },
+  {
+    to: '/parrainage',
+    label: 'Parrainage',
+    icon: Gift
   },
   {
     to: '/guide',
@@ -79,19 +86,35 @@ export default function DashboardLayout() {
           })}
 
           {profile?.role === 'admin' && (
-            <NavLink
-              to="/admin-abonnements"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-primary-600 text-white'
-                    : 'text-primary-200 hover:bg-primary-700'
-                }`
-              }
-            >
-              <ShieldCheck size={18} />
-              Administration
-            </NavLink>
+            <>
+              <NavLink
+                to="/admin-abonnements"
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-primary-600 text-white'
+                      : 'text-primary-200 hover:bg-primary-700'
+                  }`
+                }
+              >
+                <ShieldCheck size={18} />
+                Administration
+              </NavLink>
+
+              <NavLink
+                to="/admin-parrainages"
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-primary-600 text-white'
+                      : 'text-primary-200 hover:bg-primary-700'
+                  }`
+                }
+              >
+                <Wallet size={18} />
+                Retraits parrainage
+              </NavLink>
+            </>
           )}
         </nav>
 

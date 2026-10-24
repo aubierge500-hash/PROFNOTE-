@@ -1,13 +1,16 @@
 import { useState, type FormEvent } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/lib/AuthContext'
+import { normalizeReferralCode } from '@/lib/referral'
 import AuthLayout from './AuthLayout'
 
 export default function Register() {
   const { session, signUp } = useAuth()
+  const [searchParams] = useSearchParams()
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [referralCode, setReferralCode] = useState(() => normalizeReferralCode(searchParams.get('ref') ?? ''))
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -18,7 +21,7 @@ export default function Register() {
     e.preventDefault()
     setError(null)
     setSubmitting(true)
-    const { error } = await signUp(email, password, fullName)
+    const { error } = await signUp(email, password, fullName, referralCode)
     setSubmitting(false)
     if (error) setError(error)
     else setDone(true)
@@ -72,6 +75,20 @@ export default function Register() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Au moins 6 caractères"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-primary-700 mb-1">
+            Code de parrainage <span className="font-normal text-primary-400">(facultatif)</span>
+          </label>
+          <input
+            className="input-field uppercase tracking-widest"
+            value={referralCode}
+            onChange={(e) => setReferralCode(normalizeReferralCode(e.target.value))}
+            placeholder="Ex : K7M2QX"
+            autoCapitalize="characters"
+            autoComplete="off"
           />
         </div>
 
