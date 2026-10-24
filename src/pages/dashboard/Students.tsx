@@ -18,7 +18,6 @@ import {
   parseStudentsFile,
   type ImportResult
 } from '@/lib/importStudentsFile'
-import PhotoImportButton from '@/components/PhotoImportButton'
 import type { SchoolClass, Student } from '@/types/database'
 
 function normalizeBeninWhatsApp(
@@ -614,19 +613,6 @@ export default function Students() {
           </option>
         ))}
       </select>
-
-      {selectedClass && (
-        <PhotoImportButton
-          classId={selectedClass}
-          teacherId={user!.id}
-          className={
-            classes.find(
-              (c) => c.id === selectedClass
-            )?.name ?? ''
-          }
-          onImported={loadStudents}
-        />
-      )}
 
       {importError && (
         <div className="card border border-red-200 bg-red-50 text-sm text-red-700">

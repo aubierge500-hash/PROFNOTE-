@@ -26,7 +26,6 @@ import { supabase } from '@/lib/supabase'
 import { saveOffline, readOffline, removeOffline } from '@/lib/offlineStorage'
 import { useAuth } from '@/lib/AuthContext'
 import ClassWhatsAppSendButton from '@/components/ClassWhatsAppSendButton'
-import PhotoImportButton from '@/components/PhotoImportButton'
 
 import {
 insertImportedStudents,
@@ -2112,16 +2111,6 @@ return (
             />
           </div>
 
-          <PhotoImportButton
-            classId={classId!}
-            teacherId={user!.id}
-            className={
-              schoolClass.name
-            }
-            onImported={
-              loadClass
-            }
-          />
         </div>
       </div>
 
