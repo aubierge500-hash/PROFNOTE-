@@ -1,10 +1,21 @@
 /** Informations de paiement de l'abonnement PROFNOTE (dépôt Mobile Money). */
 export const SUBSCRIPTION_PRICE_FCFA = 1125
-export const PAYMENT_NUMBER_DISPLAY = '01 29 59 53 10'
-export const PAYMENT_NUMBER_DIGITS = '0129595310'
+
+export interface PaymentNumber {
+  operator: string
+  display: string
+  digits: string
+}
+
+/** Numéros de dépôt, un par opérateur : l'enseignant choisit celui de son réseau. */
+export const PAYMENT_NUMBERS: PaymentNumber[] = [
+  { operator: 'MTN', display: '01 66 76 97 62', digits: '0166769762' },
+  { operator: 'Moov', display: '01 64 67 30 98', digits: '0164673098' },
+  { operator: 'Celtiis', display: '01 29 59 53 10', digits: '0129595310' }
+]
 
 /** Numéro WhatsApp qui reçoit les preuves de paiement (format international, sans « + »). */
-export const PAYMENT_WHATSAPP_INTERNATIONAL = '229' + PAYMENT_NUMBER_DIGITS
+export const PAYMENT_WHATSAPP_INTERNATIONAL = '2290129595310'
 
 export function formatFcfa(value: number): string {
   return `${value.toLocaleString('fr-FR')} FCFA`

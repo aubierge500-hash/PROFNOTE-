@@ -2,25 +2,24 @@ import { useState } from 'react'
 import { Check, Copy, MessageCircle } from 'lucide-react'
 import { useAuth } from '@/lib/AuthContext'
 import {
-  PAYMENT_NUMBER_DIGITS,
-  PAYMENT_NUMBER_DISPLAY,
+  PAYMENT_NUMBERS,
   SUBSCRIPTION_PRICE_FCFA,
   buildPaymentProofUrl,
   formatFcfa
 } from '@/lib/payment'
 
-/** Mode d'emploi du paiement : montant, numéro à copier, étapes, bouton « J'ai payé ». */
+/** Mode d'emploi du paiement : montant, numéros par opérateur, étapes, bouton « J'ai payé ». */
 export default function PaymentInstructions() {
   const { user, profile } = useAuth()
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<string | null>(null)
 
-  async function copyNumber() {
+  async function copyNumber(digits: string) {
     try {
-      await navigator.clipboard.writeText(PAYMENT_NUMBER_DIGITS)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 2000)
+      await navigator.clipboard.writeText(digits)
+      setCopied(digits)
+      window.setTimeout(() => setCopied(null), 2000)
     } catch {
-      window.prompt('Copiez ce numéro :', PAYMENT_NUMBER_DIGITS)
+      window.prompt('Copiez ce numéro :', digits)
     }
   }
 
@@ -32,18 +31,29 @@ export default function PaymentInstructions() {
         <p className="mt-1 text-xs text-primary-500">Abonnement valable 10 mois</p>
       </div>
 
-      <div className="rounded-xl border border-primary-100 p-4">
-        <p className="text-sm text-primary-600">Numéro de dépôt (Mobile Money)</p>
-        <p className="mt-1 text-2xl font-bold tracking-wide text-primary-800 select-all">{PAYMENT_NUMBER_DISPLAY}</p>
-        <button type="button" onClick={() => void copyNumber()} className="btn-secondary mt-3 flex w-full items-center justify-center gap-2">
-          {copied ? <Check size={18} /> : <Copy size={18} />}
-          {copied ? 'Numéro copié' : 'Copier le numéro'}
-        </button>
+      <div className="space-y-2">
+        <p className="text-sm font-medium text-primary-700">Choisissez le numéro de votre réseau</p>
+        {PAYMENT_NUMBERS.map((n) => (
+          <div key={n.digits} className="flex items-center justify-between gap-3 rounded-xl border border-primary-100 p-3">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-primary-500">{n.operator}</p>
+              <p className="text-lg font-bold tracking-wide text-primary-800 select-all">{n.display}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void copyNumber(n.digits)}
+              className="btn-secondary flex shrink-0 items-center gap-2 px-3 py-2 text-sm"
+            >
+              {copied === n.digits ? <Check size={16} /> : <Copy size={16} />}
+              {copied === n.digits ? 'Copié' : 'Copier'}
+            </button>
+          </div>
+        ))}
       </div>
 
       <ol className="space-y-3">
         {[
-          `Faites un dépôt de ${formatFcfa(SUBSCRIPTION_PRICE_FCFA)} sur le numéro ci-dessus.`,
+          `Faites un dépôt de ${formatFcfa(SUBSCRIPTION_PRICE_FCFA)} sur le numéro de votre réseau.`,
           'Gardez le message de confirmation que vous recevez, ou faites-en une capture d’écran.',
           'Touchez « J’ai payé » ci-dessous et envoyez la capture sur WhatsApp.'
         ].map((text, index) => (
