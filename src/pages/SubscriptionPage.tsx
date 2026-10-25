@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '@/lib/AuthContext'
 import { supabase } from '@/lib/supabase'
+import PaymentInstructions from '@/components/PaymentInstructions'
 
 interface Subscription {
   status: string
@@ -179,6 +180,13 @@ export default function SubscriptionPage() {
                 votre abonnement, relancez la vérification.
               </p>
             )}
+          </div>
+        )}
+
+        {!subscriptionIsValid && !loading && !error && (
+          <div className="mt-6 border-t border-primary-100 pt-6">
+            <h2 className="mb-4 text-lg font-bold text-primary-800">Réactiver mon accès</h2>
+            <PaymentInstructions />
           </div>
         )}
 
