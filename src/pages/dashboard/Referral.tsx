@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Check, Copy, Gift, MessageCircle, Wallet } from 'lucide-react'
 import {
-  REFERRAL_BLOCK_SIZE,
   REFERRAL_MIN_WITHDRAWAL_FCFA,
   REFERRAL_REWARD_FCFA,
   buildReferralLink,
@@ -103,7 +102,6 @@ export default function Referral() {
     return <div className="p-8 text-center text-primary-600">Chargement de votre parrainage…</div>
   }
 
-  const inCurrentBlock = stats ? stats.qualified % REFERRAL_BLOCK_SIZE : 0
   const waiting = stats ? Math.max(stats.signedUp - stats.qualified, 0) : 0
   const canWithdraw = !!stats && stats.available >= REFERRAL_MIN_WITHDRAWAL_FCFA && !stats.pendingRequest
   const toMinimum = stats ? Math.max(REFERRAL_MIN_WITHDRAWAL_FCFA - stats.available, 0) : REFERRAL_MIN_WITHDRAWAL_FCFA
@@ -118,8 +116,8 @@ export default function Referral() {
           <Gift size={24} /> Parrainage
         </h1>
         <p className="text-sm text-primary-600 mt-2">
-          Parrainez {REFERRAL_BLOCK_SIZE} collègues : vous gagnez {REFERRAL_REWARD_FCFA} FCFA. Vous pouvez retirer
-          vos gains dès que vous atteignez {REFERRAL_MIN_WITHDRAWAL_FCFA} FCFA.
+          Pour chaque collègue que vous parrainez, vous gagnez {REFERRAL_REWARD_FCFA} FCFA. Vous pouvez retirer vos
+          gains dès que vous atteignez {REFERRAL_MIN_WITHDRAWAL_FCFA} FCFA.
         </p>
         <p className="text-xs text-primary-500 mt-1">
           Un collègue est compté quand son abonnement est activé (après son premier paiement).
@@ -166,21 +164,7 @@ export default function Referral() {
           </section>
 
           <section className="card space-y-3">
-            <div className="flex items-baseline justify-between">
-              <p className="text-sm font-medium text-primary-700">Prochain bloc de {REFERRAL_BLOCK_SIZE} collègues</p>
-              <p className="text-sm font-semibold text-primary-800">
-                {inCurrentBlock} / {REFERRAL_BLOCK_SIZE}
-              </p>
-            </div>
-            <div className="h-3 rounded-full bg-primary-100 overflow-hidden">
-              <div
-                className="h-full bg-primary-600 transition-all"
-                style={{ width: `${(inCurrentBlock / REFERRAL_BLOCK_SIZE) * 100}%` }}
-              />
-            </div>
-            <p className="text-xs text-primary-500">
-              Encore {REFERRAL_BLOCK_SIZE - inCurrentBlock} collègue(s) pour gagner {REFERRAL_REWARD_FCFA} FCFA.
-            </p>
+            <p className="text-sm font-medium text-primary-700">Vos collègues parrainés</p>
 
             <dl className="grid grid-cols-3 gap-3 pt-2 text-center">
               <div className="rounded-lg bg-primary-50 p-3">

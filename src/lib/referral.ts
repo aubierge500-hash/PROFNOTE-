@@ -1,8 +1,7 @@
 import { supabase } from './supabase'
 
 /** Règles du parrainage (le calcul réel est fait côté base de données). */
-export const REFERRAL_BLOCK_SIZE = 5
-export const REFERRAL_REWARD_FCFA = 100
+export const REFERRAL_REWARD_FCFA = 25 // par filleul validé
 export const REFERRAL_MIN_WITHDRAWAL_FCFA = 500
 
 export interface ReferralStats {

@@ -1,6 +1,6 @@
 -- =====================================================================
 -- PROFNOTE — Système de parrainage
--- Règle : 5 filleuls validés = 100 FCFA. Retrait possible dès 500 FCFA.
+-- Règle : 25 FCFA par filleul validé. Retrait possible dès 500 FCFA (20 filleuls).
 -- Un filleul est « validé » dès que son abonnement passe à « active »
 -- (c'est-à-dire après son premier paiement confirmé par l'administration).
 -- Migration idempotente : peut être relancée sans risque.
@@ -232,7 +232,7 @@ begin
     from public.referral_withdrawals w
    where w.user_id = v_uid and w.status in ('pending', 'paid');
 
-  return query select v_code, v_total, v_q, (v_q / 5) * 100, v_w, (v_q / 5) * 100 - v_w, v_pend;
+  return query select v_code, v_total, v_q, v_q * 25, v_w, v_q * 25 - v_w, v_pend;
 end;
 $$;
 
@@ -279,7 +279,7 @@ begin
     from public.referral_withdrawals
    where user_id = v_uid and status in ('pending', 'paid');
 
-  v_avail := (v_q / 5) * 100 - v_w;
+  v_avail := v_q * 25 - v_w;
 
   if v_avail < 500 then
     raise exception 'Solde insuffisant : le retrait est possible à partir de 500 FCFA';
