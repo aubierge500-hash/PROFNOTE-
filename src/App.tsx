@@ -9,6 +9,7 @@ import ForgotPassword from '@/pages/auth/ForgotPassword'
 import ResetPassword from '@/pages/auth/ResetPassword'
 
 import SubscriptionPage from '@/pages/SubscriptionPage'
+import PaymentPage from '@/pages/PaymentPage'
 import AdminSubscriptions from '@/pages/admin/AdminSubscriptions'
 import AdminReferrals from '@/pages/admin/AdminReferrals'
 import Referral from '@/pages/dashboard/Referral'
@@ -55,6 +56,11 @@ export default function App() {
       <Route
         path="/abonnement"
         element={<SubscriptionPage />}
+      />
+
+      <Route
+        path="/paiement"
+        element={<PaymentPage />}
       />
 
       <Route element={<ProtectedRoute />}>

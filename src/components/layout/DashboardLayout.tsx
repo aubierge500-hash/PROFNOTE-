@@ -12,6 +12,7 @@ import {
   Wallet
 } from 'lucide-react'
 import { useAuth } from '@/lib/AuthContext'
+import TrialBanner from '@/components/TrialBanner'
 
 const navItems = [
   {
@@ -150,6 +151,7 @@ export default function DashboardLayout() {
       </aside>
 
       <main className="flex-1 min-w-0">
+        <TrialBanner />
         <Outlet />
       </main>
     </div>
