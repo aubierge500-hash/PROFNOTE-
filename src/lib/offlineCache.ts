@@ -48,7 +48,7 @@ const MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000
 const PRE_READ_FLUSH_INTERVAL_MS = 10_000
 
 /** Tables jamais mises en file : paiements et abonnements exigent toujours internet. */
-const ONLINE_ONLY_TABLES = new Set(['subscriptions'])
+const ONLINE_ONLY_TABLES = new Set(['subscriptions', 'referral_withdrawals'])
 
 const WRITE_METHODS = new Set(['POST', 'PATCH', 'DELETE', 'PUT'])
 

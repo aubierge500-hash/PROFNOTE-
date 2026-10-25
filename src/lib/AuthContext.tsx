@@ -13,7 +13,12 @@ interface AuthContextValue {
   profile: Profile | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error: string | null }>
+  signUp: (
+    email: string,
+    password: string,
+    fullName: string,
+    referralCode?: string
+  ) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
   resetPassword: (email: string) => Promise<{ error: string | null }>
 }
@@ -110,12 +115,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error ? traduireErreur(error.message) : null }
   }
 
-  async function signUp(email: string, password: string, fullName: string) {
+  async function signUp(email: string, password: string, fullName: string, referralCode?: string) {
     if (!navigator.onLine) return { error: MESSAGE_HORS_LIGNE }
+    const code = referralCode?.trim()
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: fullName } }
+      options: { data: code ? { full_name: fullName, referral_code: code } : { full_name: fullName } }
     })
     return { error: error ? traduireErreur(error.message) : null }
   }
