@@ -7,6 +7,8 @@ import {
   MessageCircle,
   WifiOff,
   UserCircle,
+  Gift,
+  Wallet,
   Lightbulb,
   type LucideIcon
 } from 'lucide-react'
@@ -129,6 +131,35 @@ const sections: GuideSection[] = [
       'Modifiez vos informations puis touchez « Enregistrer ».'
     ],
     link: { to: '/profil', label: 'Ouvrir mon profil' }
+  },
+  {
+    id: 'abonnement',
+    title: '9. Payer mon abonnement',
+    icon: Wallet,
+    intro: 'L’abonnement coûte 1125 FCFA et reste valable 10 mois. Une bande en haut de l’écran vous rappelle les jours d’essai restants.',
+    steps: [
+      'Touchez « Payer mon abonnement » dans la bande en haut de l’écran.',
+      'Choisissez le numéro de votre réseau (MTN, Moov ou Celtiis) et touchez « Copier ».',
+      'Faites un dépôt de 1125 FCFA sur ce numéro avec Mobile Money.',
+      'Touchez « J’ai payé » : WhatsApp s’ouvre avec un message prêt. Joignez la capture du message de confirmation et envoyez.'
+    ],
+    tip: 'Votre accès est activé dès que le paiement est vérifié. Vos classes, élèves et notes sont toujours conservés, même si l’accès est suspendu.',
+    link: { to: '/paiement', label: 'Payer mon abonnement' }
+  },
+  {
+    id: 'parrainage',
+    title: '10. Parrainer des collègues',
+    icon: Gift,
+    intro: 'Pour chaque collègue que vous parrainez et qui paie son abonnement, vous gagnez 25 FCFA. Vous pouvez retirer vos gains dès 500 FCFA.',
+    steps: [
+      'Touchez « Parrainage » dans le menu.',
+      'Touchez « Partager sur WhatsApp » pour envoyer votre lien à vos collègues, ou donnez-leur votre code.',
+      'Votre collègue crée son compte avec votre lien ou saisit votre code à l’inscription.',
+      'Il est compté dès que son abonnement est activé. Suivez vos gains sur la page Parrainage.',
+      'À partir de 500 FCFA, saisissez votre numéro Mobile Money et touchez « Retirer ». Vous recevez l’argent après vérification.'
+    ],
+    tip: 'Un seul retrait peut être en cours à la fois. La demande de retrait nécessite internet.',
+    link: { to: '/parrainage', label: 'Ouvrir le parrainage' }
   }
 ]
 
