@@ -12,10 +12,16 @@ interface AccessCheck {
   userId: string | null
   loading: boolean
   allowed: boolean
+  /**
+   * Vérification impossible (réseau, serveur, jeton) et aucun accès déjà vérifié sur
+   * l'appareil. L'enseignant n'est PAS déclaré sans abonnement : on ne l'envoie jamais
+   * vers la page d'abonnement dans ce cas, on lui demande seulement de réessayer.
+   */
+  unverified?: boolean
 }
 
 export default function ProtectedRoute() {
-  const { session } = useAuth()
+  const { session, signOut } = useAuth()
   const userId = session?.user?.id ?? null
 
   const [check, setCheck] = useState<AccessCheck>({
@@ -23,21 +29,30 @@ export default function ProtectedRoute() {
     loading: true,
     allowed: false
   })
+  const [retryCount, setRetryCount] = useState(0)
 
   useEffect(() => {
     if (!userId) return
 
     let cancelled = false
 
+    // Vérification qui n'a pas pu aboutir : on garde l'accès déjà accordé (même session),
+    // sinon on s'appuie sur la dernière vérification faite en ligne sur cet appareil,
+    // sinon on demande de réessayer. Jamais de renvoi vers la page d'abonnement.
+    function applyFailedCheck() {
+      setCheck((previous) => {
+        if (previous.userId === userId && previous.allowed) return previous
+
+        const allowed = canUseOfflineAccess(userId!)
+        return { userId, loading: false, allowed, unverified: !allowed }
+      })
+    }
+
     async function verifyAccess() {
       // Sans internet : on s'appuie sur la dernière vérification faite en ligne
       // (abonnement non échu, moins de 30 jours, horloge cohérente).
       if (!navigator.onLine) {
-        setCheck({
-          userId,
-          loading: false,
-          allowed: canUseOfflineAccess(userId!)
-        })
+        applyFailedCheck()
         return
       }
 
@@ -91,13 +106,7 @@ export default function ProtectedRoute() {
           // Échec de vérification (réseau, jeton, serveur) : si l'abonnement a déjà été
           // vérifié sur cet appareil et n'est pas échu, on laisse l'enseignant travailler.
           // Il ne peut pas lire de données sans droit : les règles de la base s'appliquent.
-          const offlineAllowed = canUseOfflineAccess(userId!)
-
-          setCheck({
-            userId,
-            loading: false,
-            allowed: offlineAllowed
-          })
+          applyFailedCheck()
           return
         }
 
@@ -134,11 +143,7 @@ export default function ProtectedRoute() {
         console.error('[Abonnement] Erreur de vérification :', error)
 
         if (!cancelled) {
-          setCheck({
-            userId,
-            loading: false,
-            allowed: canUseOfflineAccess(userId!)
-          })
+          applyFailedCheck()
         }
       }
     }
@@ -155,7 +160,7 @@ export default function ProtectedRoute() {
       cancelled = true
       window.removeEventListener('online', onBackOnline)
     }
-  }, [userId])
+  }, [userId, retryCount])
 
   if (!session) {
     return <Navigate to="/connexion" replace />
@@ -166,6 +171,47 @@ export default function ProtectedRoute() {
       <div className="min-h-screen flex items-center justify-center text-primary-600">
         Vérification de votre abonnement…
       </div>
+    )
+  }
+
+  if (check.unverified) {
+    return (
+      <main className="min-h-screen bg-primary-50 flex items-center justify-center p-4">
+        <section className="bg-white w-full max-w-lg rounded-2xl border border-primary-100 shadow-sm p-6 md:p-8">
+          <p className="text-sm font-semibold text-primary-500">PROFNOTE</p>
+
+          <h1 className="text-2xl font-bold text-primary-800 mt-3">
+            Connexion internet nécessaire
+          </h1>
+
+          <p className="text-sm text-primary-500 mt-2">
+            Votre compte et vos données scolaires sont conservés. PROFNOTE n’a pas
+            pu joindre le serveur : activez vos données mobiles ou le Wi-Fi.
+            L’application s’ouvrira automatiquement dès que la connexion reviendra.
+          </p>
+
+          <div className="mt-6 space-y-3">
+            <button
+              type="button"
+              onClick={() => {
+                setCheck({ userId, loading: true, allowed: false })
+                setRetryCount((count) => count + 1)
+              }}
+              className="w-full rounded-lg bg-primary-600 text-white px-4 py-3 font-medium hover:bg-primary-700"
+            >
+              Réessayer
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              className="w-full rounded-lg border border-primary-200 px-4 py-3 text-sm text-primary-700 hover:bg-primary-50"
+            >
+              Déconnexion
+            </button>
+          </div>
+        </section>
+      </main>
     )
   }
 
