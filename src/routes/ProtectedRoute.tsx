@@ -2,7 +2,11 @@ import { useEffect, useState } from 'react'
 import { Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from '@/lib/AuthContext'
 import { supabase } from '@/lib/supabase'
-import { canUseOfflineAccess, isNetworkFailure, saveAccessSnapshot } from '@/lib/offlineAccess'
+import {
+  canUseOfflineAccess,
+  isAuthError,
+  saveAccessSnapshot
+} from '@/lib/offlineAccess'
 
 interface AccessCheck {
   userId: string | null
@@ -45,8 +49,8 @@ export default function ProtectedRoute() {
           : { userId, loading: true, allowed: false }
       )
 
-      try {
-        const [profileResult, subscriptionResult] = await Promise.all([
+      const fetchAccess = () =>
+        Promise.all([
           supabase
             .from('profiles')
             .select('role')
@@ -60,6 +64,20 @@ export default function ProtectedRoute() {
             .maybeSingle()
         ])
 
+      try {
+        let [profileResult, subscriptionResult] = await fetchAccess()
+
+        // Jeton de connexion expiré (401) : on le renouvelle puis on réessaie une fois.
+        if (
+          isAuthError(profileResult.error) ||
+          isAuthError(subscriptionResult.error)
+        ) {
+          const { error: refreshError } = await supabase.auth.refreshSession()
+          if (!refreshError) {
+            ;[profileResult, subscriptionResult] = await fetchAccess()
+          }
+        }
+
         if (cancelled) return
 
         if (profileResult.error || subscriptionResult.error) {
@@ -70,9 +88,10 @@ export default function ProtectedRoute() {
             requestError
           )
 
-          // Connexion coupée ou trop lente (ex. Wi-Fi sans internet) : mode hors ligne.
-          const offlineAllowed =
-            isNetworkFailure(requestError?.message) && canUseOfflineAccess(userId!)
+          // Échec de vérification (réseau, jeton, serveur) : si l'abonnement a déjà été
+          // vérifié sur cet appareil et n'est pas échu, on laisse l'enseignant travailler.
+          // Il ne peut pas lire de données sans droit : les règles de la base s'appliquent.
+          const offlineAllowed = canUseOfflineAccess(userId!)
 
           setCheck({
             userId,
@@ -118,7 +137,7 @@ export default function ProtectedRoute() {
           setCheck({
             userId,
             loading: false,
-            allowed: isNetworkFailure(error) && canUseOfflineAccess(userId!)
+            allowed: canUseOfflineAccess(userId!)
           })
         }
       }

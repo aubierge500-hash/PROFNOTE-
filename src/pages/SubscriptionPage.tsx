@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import PaymentInstructions from '@/components/PaymentInstructions'
 import {
   canUseOfflineAccess,
+  isAuthError,
   isNetworkFailure,
   saveAccessSnapshot
 } from '@/lib/offlineAccess'
@@ -81,20 +82,34 @@ export default function SubscriptionPage() {
       }
 
       try {
-        const [profileResult, subscriptionResult] = await withTimeout(
-          Promise.all([
-            supabase
-              .from('profiles')
-              .select('role')
-              .eq('id', userId)
-              .maybeSingle(),
-            supabase
-              .from('subscriptions')
-              .select('status, paid_until')
-              .eq('user_id', userId)
-              .maybeSingle()
-          ])
-        )
+        const fetchAccess = () =>
+          withTimeout(
+            Promise.all([
+              supabase
+                .from('profiles')
+                .select('role')
+                .eq('id', userId)
+                .maybeSingle(),
+              supabase
+                .from('subscriptions')
+                .select('status, paid_until')
+                .eq('user_id', userId)
+                .maybeSingle()
+            ])
+          )
+
+        let [profileResult, subscriptionResult] = await fetchAccess()
+
+        // Jeton de connexion expiré (401) : on le renouvelle puis on réessaie une fois.
+        if (
+          isAuthError(profileResult.error) ||
+          isAuthError(subscriptionResult.error)
+        ) {
+          const { error: refreshError } = await supabase.auth.refreshSession()
+          if (!refreshError) {
+            ;[profileResult, subscriptionResult] = await fetchAccess()
+          }
+        }
 
         if (cancelled) return
 
@@ -108,10 +123,8 @@ export default function SubscriptionPage() {
           )
 
           setSubscription(null)
-          setOfflineAllowed(
-            isNetworkFailure(queryError.message) &&
-              canUseOfflineAccess(userId)
-          )
+          // Abonnement déjà vérifié sur cet appareil : on laisse travailler.
+          setOfflineAllowed(canUseOfflineAccess(userId))
           setProblem(
             isNetworkFailure(queryError.message)
               ? 'network'
@@ -146,9 +159,7 @@ export default function SubscriptionPage() {
 
         if (!cancelled) {
           setSubscription(null)
-          setOfflineAllowed(
-            isNetworkFailure(err) && canUseOfflineAccess(userId)
-          )
+          setOfflineAllowed(canUseOfflineAccess(userId))
           setProblem(isNetworkFailure(err) ? 'network' : 'server')
         }
       } finally {
@@ -186,7 +197,7 @@ export default function SubscriptionPage() {
   }
 
   // Réseau coupé mais abonnement déjà vérifié sur cet appareil : on laisse travailler.
-  if (!loading && problem === 'network' && offlineAllowed) {
+  if (!loading && problem && offlineAllowed) {
     return <Navigate to="/" replace />
   }
 
