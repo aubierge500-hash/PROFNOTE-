@@ -121,6 +121,20 @@ export function readStoredSession(): Session | null {
   return null
 }
 
+/**
+ * Reconnaît un jeton de connexion expiré ou refusé (réponse 401 de Supabase).
+ * Cas typique : session reprise depuis l'appareil après une longue absence de réseau.
+ */
+export function isAuthError(error: unknown): boolean {
+  const e = error as { message?: string; code?: string; status?: number } | null | undefined
+  if (!e) return false
+  return (
+    e.status === 401 ||
+    e.code === 'PGRST301' ||
+    /jwt|invalid token|token is expired/i.test(e.message ?? '')
+  )
+}
+
 /** Reconnaît une erreur due à l'absence ou à la lenteur du réseau. */
 export function isNetworkFailure(error: unknown): boolean {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return true

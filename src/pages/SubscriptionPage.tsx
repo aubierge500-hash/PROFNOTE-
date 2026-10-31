@@ -1,13 +1,42 @@
-
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '@/lib/AuthContext'
 import { supabase } from '@/lib/supabase'
 import PaymentInstructions from '@/components/PaymentInstructions'
+import {
+  canUseOfflineAccess,
+  isAuthError,
+  isNetworkFailure,
+  saveAccessSnapshot
+} from '@/lib/offlineAccess'
 
 interface Subscription {
   status: string
   paid_until: string | null
+}
+
+type CheckProblem = 'network' | 'server' | null
+
+/** Évite une attente infinie sur une connexion très lente. */
+const CHECK_TIMEOUT_MS = 15000
+
+function withTimeout<T>(promise: PromiseLike<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(
+      () => reject(new Error('timeout')),
+      CHECK_TIMEOUT_MS
+    )
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        window.clearTimeout(timer)
+        reject(error)
+      }
+    )
+  })
 }
 
 export default function SubscriptionPage() {
@@ -15,9 +44,18 @@ export default function SubscriptionPage() {
 
   const [subscription, setSubscription] =
     useState<Subscription | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [problem, setProblem] = useState<CheckProblem>(null)
+  const [offlineAllowed, setOfflineAllowed] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
+
+  // Dès que le réseau revient, on relance la vérification toute seule.
+  useEffect(() => {
+    const onBackOnline = () => setRetryCount((count) => count + 1)
+    window.addEventListener('online', onBackOnline)
+    return () => window.removeEventListener('online', onBackOnline)
+  }, [])
 
   useEffect(() => {
     if (!user?.id) {
@@ -26,20 +64,57 @@ export default function SubscriptionPage() {
       return
     }
 
+    const userId = user.id
     let cancelled = false
 
     async function loadSubscription() {
       setLoading(true)
-      setError('')
+      setProblem(null)
+
+      // Pas d'internet : on s'appuie sur la dernière vérification faite en ligne.
+      if (!navigator.onLine) {
+        if (cancelled) return
+        setSubscription(null)
+        setOfflineAllowed(canUseOfflineAccess(userId))
+        setProblem('network')
+        setLoading(false)
+        return
+      }
 
       try {
-        const { data, error: queryError } = await supabase
-          .from('subscriptions')
-          .select('status, paid_until')
-          .eq('user_id', user!.id)
-          .maybeSingle()
+        const fetchAccess = () =>
+          withTimeout(
+            Promise.all([
+              supabase
+                .from('profiles')
+                .select('role')
+                .eq('id', userId)
+                .maybeSingle(),
+              supabase
+                .from('subscriptions')
+                .select('status, paid_until')
+                .eq('user_id', userId)
+                .maybeSingle()
+            ])
+          )
+
+        let [profileResult, subscriptionResult] = await fetchAccess()
+
+        // Jeton de connexion expiré (401) : on le renouvelle puis on réessaie une fois.
+        if (
+          isAuthError(profileResult.error) ||
+          isAuthError(subscriptionResult.error)
+        ) {
+          const { error: refreshError } = await supabase.auth.refreshSession()
+          if (!refreshError) {
+            ;[profileResult, subscriptionResult] = await fetchAccess()
+          }
+        }
 
         if (cancelled) return
+
+        const queryError =
+          profileResult.error ?? subscriptionResult.error
 
         if (queryError) {
           console.error(
@@ -47,25 +122,45 @@ export default function SubscriptionPage() {
             queryError
           )
 
-          setError(
-            'Impossible de vérifier votre abonnement. Vérifiez votre connexion puis réessayez.'
-          )
           setSubscription(null)
+          // Abonnement déjà vérifié sur cet appareil : on laisse travailler.
+          setOfflineAllowed(canUseOfflineAccess(userId))
+          setProblem(
+            isNetworkFailure(queryError.message)
+              ? 'network'
+              : 'server'
+          )
           return
         }
 
-        setSubscription(data as Subscription | null)
+        const admin = profileResult.data?.role === 'admin'
+        const data = subscriptionResult.data as Subscription | null
+
+        const end = data?.paid_until
+          ? new Date(data.paid_until).getTime()
+          : 0
+        const valid =
+          (data?.status === 'active' || data?.status === 'trial') &&
+          Number.isFinite(end) &&
+          end > Date.now()
+
+        // Mémorise ce résultat : l'accès hors ligne sera correct juste après.
+        saveAccessSnapshot(userId, {
+          allowed: admin || valid,
+          isAdmin: admin,
+          paidUntil: data?.paid_until ?? null
+        })
+
+        setIsAdmin(admin)
+        setSubscription(data)
+        setOfflineAllowed(false)
       } catch (err) {
-        console.error(
-          '[PROFNOTE] Erreur inattendue :',
-          err
-        )
+        console.error('[PROFNOTE] Erreur inattendue :', err)
 
         if (!cancelled) {
-          setError(
-            'Une erreur est survenue pendant la vérification. Veuillez réessayer.'
-          )
           setSubscription(null)
+          setOfflineAllowed(canUseOfflineAccess(userId))
+          setProblem(isNetworkFailure(err) ? 'network' : 'server')
         }
       } finally {
         if (!cancelled) {
@@ -90,13 +185,19 @@ export default function SubscriptionPage() {
     : NaN
 
   const subscriptionIsValid =
-    (subscription?.status === 'active' ||
+    isAdmin ||
+    ((subscription?.status === 'active' ||
       subscription?.status === 'trial') &&
-    Number.isFinite(paidUntilTime) &&
-    paidUntilTime > Date.now()
+      Number.isFinite(paidUntilTime) &&
+      paidUntilTime > Date.now())
 
-  // Si l’abonnement est valide, rétablir directement l’accès.
-  if (!loading && !error && subscriptionIsValid) {
+  // Abonnement valide : on rétablit directement l'accès.
+  if (!loading && !problem && subscriptionIsValid) {
+    return <Navigate to="/" replace />
+  }
+
+  // Réseau coupé mais abonnement déjà vérifié sur cet appareil : on laisse travailler.
+  if (!loading && problem && offlineAllowed) {
     return <Navigate to="/" replace />
   }
 
@@ -118,6 +219,8 @@ export default function SubscriptionPage() {
           ? 'Abonnement expiré'
           : 'Aucun abonnement actif'
 
+  const showResult = !loading && !problem
+
   return (
     <main className="min-h-screen bg-primary-50 flex items-center justify-center p-4">
       <section className="bg-white w-full max-w-lg rounded-2xl border border-primary-100 shadow-sm p-6 md:p-8">
@@ -126,12 +229,16 @@ export default function SubscriptionPage() {
         </p>
 
         <h1 className="text-2xl font-bold text-primary-800 mt-3">
-          Vérification de votre abonnement
+          {problem === 'network'
+            ? 'Connexion internet nécessaire'
+            : 'Vérification de votre abonnement'}
         </h1>
 
         <p className="text-sm text-primary-500 mt-2">
           Votre compte et vos données scolaires sont conservés.
-          Cette page vérifie vos droits d’accès.
+          {problem === 'network'
+            ? ' Votre abonnement n’est pas en cause.'
+            : ' Cette page vérifie vos droits d’accès.'}
         </p>
 
         {loading && (
@@ -143,16 +250,36 @@ export default function SubscriptionPage() {
           </div>
         )}
 
-        {!loading && error && (
+        {!loading && problem === 'network' && (
+          <div
+            role="status"
+            className="mt-5 rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800 space-y-2"
+          >
+            <p>
+              Impossible de joindre le serveur : votre connexion
+              est coupée ou trop faible.
+            </p>
+            <p>
+              Activez vos données mobiles ou le Wi-Fi. La
+              vérification se relancera automatiquement dès que
+              internet reviendra, puis vous pourrez travailler
+              même sans connexion.
+            </p>
+          </div>
+        )}
+
+        {!loading && problem === 'server' && (
           <div
             role="alert"
             className="mt-5 rounded-lg bg-red-50 border border-red-200 p-4 text-sm text-red-700"
           >
-            {error}
+            Le service ne répond pas correctement pour le moment.
+            Ce n’est pas un problème de votre abonnement. Réessayez
+            dans quelques instants.
           </div>
         )}
 
-        {!loading && !error && (
+        {showResult && (
           <div className="mt-5 rounded-lg bg-primary-50 p-4 space-y-3">
             <p className="text-sm text-primary-600 break-all">
               Compte : <strong>{user.email}</strong>
@@ -183,7 +310,7 @@ export default function SubscriptionPage() {
           </div>
         )}
 
-        {!subscriptionIsValid && !loading && !error && (
+        {!subscriptionIsValid && showResult && (
           <div className="mt-6 border-t border-primary-100 pt-6">
             <h2 className="mb-4 text-lg font-bold text-primary-800">Réactiver mon accès</h2>
             <PaymentInstructions />
@@ -201,10 +328,12 @@ export default function SubscriptionPage() {
           >
             {loading
               ? 'Vérification en cours…'
-              : 'Vérifier à nouveau mon abonnement'}
+              : problem
+                ? 'Réessayer'
+                : 'Vérifier à nouveau mon abonnement'}
           </button>
 
-          {!subscriptionIsValid && !loading && !error && (
+          {!subscriptionIsValid && showResult && (
             <a
               href={`mailto:aubiergeservices@gmail.com?subject=${encodeURIComponent('Abonnement PROFNOTE')}&body=${encodeURIComponent(`Bonjour,\n\nJe souhaite vérifier mon abonnement PROFNOTE.\nCompte : ${user.email}\nStatut affiché : ${statusLabel}\n\nMerci.`)}`}
               className="block text-center rounded-lg border border-primary-200 px-4 py-3 text-sm font-medium text-primary-700 hover:bg-primary-50"
