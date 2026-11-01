@@ -645,6 +645,7 @@ const DEFAULTS: Record<string, Row> = {
   },
   bulletin_entries: { data: {} },
   bulletin_templates: { data: {} },
+  pp_averages: { period: 1, kind: 'matiere', coef: 1, teacher_name: null, averages: {} },
   bulletin_student_records: {
     period: 1,
     conduct: '',
@@ -663,11 +664,12 @@ const TIMESTAMPS: Record<string, string[]> = {
   bulletin_student_records: ['created_at', 'updated_at'],
   bulletin_entries: ['updated_at'],
   bulletin_templates: ['updated_at'],
+  pp_averages: ['updated_at'],
   whatsapp_history: ['sent_at']
 }
 
 /** Tables dont la colonne user_id vaut par défaut l'utilisateur connecté (auth.uid()). */
-const USER_ID_TABLES = new Set(['bulletin_entries', 'bulletin_templates'])
+const USER_ID_TABLES = new Set(['bulletin_entries', 'bulletin_templates', 'pp_averages'])
 
 export function newUuid(): string {
   const cryptoApi = (globalThis as { crypto?: Crypto }).crypto

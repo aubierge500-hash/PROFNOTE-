@@ -30,6 +30,7 @@ export const REPLICA_TABLES: Record<string, { owner: string; requireFilter?: str
   bulletin_student_records: { owner: 'teacher_id' },
   bulletin_entries: { owner: 'user_id' },
   bulletin_templates: { owner: 'user_id' },
+  pp_averages: { owner: 'user_id' },
   // Un administrateur voit tous les profils : on ne répond localement que pour « id = moi ».
   profiles: { owner: 'id', requireFilter: 'id' }
 }
@@ -40,6 +41,7 @@ const CASCADES: Record<string, Array<{ table: string; column: string; action: 'd
     { table: 'students', column: 'class_id', action: 'delete' },
     { table: 'evaluations', column: 'class_id', action: 'delete' },
     { table: 'bulletin_entries', column: 'class_id', action: 'delete' },
+    { table: 'pp_averages', column: 'class_id', action: 'delete' },
     { table: 'whatsapp_history', column: 'class_id', action: 'null' }
   ],
   students: [
