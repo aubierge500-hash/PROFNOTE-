@@ -36,8 +36,10 @@ export interface PPStudentResult {
   total: number
   /** Somme des coefficients des matières notées pour cet élève. */
   totalCoef: number
-  /** Moyenne générale de la période, ou null si aucune matière notée. */
+  /** Moyenne générale de la période ; null si une matière comptée n'a pas de moyenne pour cet élève. */
   moyenne: number | null
+  /** Matières comptées pour lesquelles l'élève n'a pas de moyenne. */
+  missing: string[]
   rank: number | null
   rankLabel: string
 }
@@ -72,24 +74,34 @@ export function isValidCoef(n: number | null, allowZero = false): n is number {
 
 /**
  * Moyenne générale d'un élève pour une période :
- * somme (moyenne × coefficient) ÷ somme des coefficients, sur les lignes où l'élève a une moyenne.
+ * somme (moyenne × coefficient) ÷ somme des coefficients.
+ * RÈGLE : si l'élève n'a pas une moyenne dans TOUTES les matières comptées (coefficient > 0),
+ * on ne lui calcule pas de moyenne générale (ni de rang), pour ne pas le favoriser ou le défavoriser.
+ * `missing` liste les matières manquantes.
  */
 export function studentGeneral(
   studentId: string,
   rows: PPSubjectRow[],
-): { total: number; totalCoef: number; moyenne: number | null } {
+): { total: number; totalCoef: number; moyenne: number | null; missing: string[] } {
   let total = 0
   let totalCoef = 0
+  const missing: string[] = []
   for (const row of rows) {
+    if (!isNum(row.coef) || row.coef <= 0) continue
     const note = row.averages[studentId]
-    if (!isNum(note) || !isNum(row.coef) || row.coef <= 0) continue
+    if (!isNum(note)) {
+      missing.push(row.subjectName)
+      continue
+    }
     total += note * row.coef
     totalCoef += row.coef
   }
+  const complete = missing.length === 0 && totalCoef > 0
   return {
     total: roundTo2(total, 'nearest'),
     totalCoef,
-    moyenne: totalCoef > 0 ? roundTo2(total / totalCoef, 'nearest') : null,
+    moyenne: complete ? roundTo2(total / totalCoef, 'nearest') : null,
+    missing,
   }
 }
 
@@ -126,16 +138,24 @@ export interface PPAnnualResult {
   rankLabel: string
 }
 
-/** Moyenne annuelle = moyenne des moyennes générales de période disponibles, puis rang. */
+/**
+ * Moyenne annuelle = moyenne des moyennes générales de période, puis rang.
+ * Les périodes où aucun élève n'a encore de moyenne générale sont ignorées (période pas commencée).
+ * Un élève sans moyenne générale dans l'une des périodes en cours n'a pas de moyenne annuelle.
+ */
 export function computeAnnual(
   students: PPStudent[],
   periods: PPPeriodResult[],
 ): PPAnnualResult[] {
   const base = students.map((student, index) => {
     const periodAverages = periods.map((p) => p.results[index]?.moyenne ?? null)
-    const present = periodAverages.filter((v): v is number => v !== null)
-    const moyenne = present.length
-      ? roundTo2(present.reduce((a, b) => a + b, 0) / present.length, 'nearest')
+    const activeIndexes = periods
+      .map((p, i) => (p.results.some((r) => r.moyenne !== null) ? i : -1))
+      .filter((i) => i >= 0)
+    const active = activeIndexes.map((i) => periodAverages[i])
+    const complete = active.length > 0 && active.every((v) => v !== null)
+    const moyenne = complete
+      ? roundTo2((active as number[]).reduce((a, b) => a + b, 0) / active.length, 'nearest')
       : null
     return { student, periodAverages, moyenne }
   })

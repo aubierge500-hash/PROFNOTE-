@@ -602,9 +602,23 @@ export default function PPMoyennes() {
               </table>
             </div>
           )}
+          {current.results.some((r) => r.missing.length > 0) && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 space-y-1">
+              <p className="font-medium">
+                Moyenne non calculée (matière manquante) — ces élèves n'ont ni moyenne générale ni rang :
+              </p>
+              {current.results
+                .filter((r) => r.missing.length > 0)
+                .map((r) => (
+                  <p key={r.student.id}>
+                    {r.student.last_name} {r.student.first_name} : manque {r.missing.join(', ')}
+                  </p>
+                ))}
+            </div>
+          )}
           <p className="text-xs text-primary-500">
-            Moyenne générale = somme (moyenne × coefficient) ÷ somme des coefficients, sur les
-            matières notées de l'élève.
+            Moyenne générale = somme (moyenne × coefficient) ÷ somme des coefficients. Elle n'est
+            calculée que si l'élève a une moyenne dans toutes les matières.
           </p>
         </section>
       )}
@@ -648,7 +662,8 @@ export default function PPMoyennes() {
             </table>
           </div>
           <p className="text-xs text-primary-500">
-            Moyenne annuelle = moyenne des moyennes générales de période.
+            Moyenne annuelle = moyenne des moyennes générales de période. Elle n'est calculée que si
+            l'élève a une moyenne générale dans chaque période commencée.
           </p>
         </section>
       )}
