@@ -468,6 +468,7 @@ const TABLE_LABELS: Record<string, string> = {
   profiles: 'profil',
   bulletin_entries: 'bulletin',
   bulletin_templates: 'modèle de bulletin',
+  pp_averages: 'moyennes du professeur principal',
   bulletin_student_records: 'fiche de bulletin'
 }
 

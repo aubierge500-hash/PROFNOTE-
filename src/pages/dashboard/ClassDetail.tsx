@@ -2043,6 +2043,17 @@ return (
     ))}
   </div>
 
+  <button
+    type="button"
+    onClick={() =>
+      navigate(`/classes/${classId}/moyennes-generales`)
+    }
+    className="w-full rounded-lg border border-primary-200 bg-white p-3 text-sm text-primary-700 flex items-center justify-center gap-2"
+  >
+    <BarChart3 size={16} />
+    Moyennes générales (professeur principal)
+  </button>
+
   {/* =========================
       ÉLÈVES
       ========================= */}

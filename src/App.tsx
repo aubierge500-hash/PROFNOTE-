@@ -26,6 +26,7 @@ import WhatsApp from '@/pages/dashboard/WhatsApp'
 import WhatsAppHistory from '@/pages/dashboard/WhatsAppHistory'
 import Bulletins from '@/pages/dashboard/Bulletins'
 import Guide from '@/pages/dashboard/Guide'
+import PPMoyennes from '@/pages/dashboard/PPMoyennes'
 
 export default function App() {
   const { loading } = useAuth()
@@ -84,6 +85,7 @@ export default function App() {
             element={<ClassDetail />}
           />
 
+          <Route path="/classes/:classId/moyennes-generales" element={<PPMoyennes />} />
           <Route path="/eleves" element={<Students />} />
           <Route
             path="/eleves/:studentId"
