@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Plus, Save, Trash2, X } from 'lucide-react'
+import PPPartage from './PPPartage'
 
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/AuthContext'
@@ -130,6 +131,16 @@ export default function PPMoyennes() {
     setSelectedKey(null)
     setMessage('')
     setError('')
+  }
+
+  function handleIntegrated(row: PPStoredRow) {
+    setRows((list) => {
+      const exists = list.some((r) => r.period === row.period && r.subjectKey === row.subjectKey)
+      return exists
+        ? list.map((r) => (r.period === row.period && r.subjectKey === row.subjectKey ? row : r))
+        : [...list, row]
+    })
+    if (selectedKey === row.subjectKey) openRow(row)
   }
 
   async function handleAdd(event: FormEvent) {
@@ -540,6 +551,18 @@ export default function PPMoyennes() {
             </div>
           )}
         </section>
+      )}
+
+      {period !== 0 && view === 'saisie' && (
+        <PPPartage
+          classId={schoolClass.id}
+          className={schoolClass.name}
+          period={period}
+          periodLabel={periodTitle(periodCount, period)}
+          students={students}
+          rows={rows}
+          onIntegrated={handleIntegrated}
+        />
       )}
 
       {/* ===== RÉSULTATS D'UNE PÉRIODE ===== */}
