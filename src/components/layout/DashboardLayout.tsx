@@ -9,7 +9,9 @@ import {
   FileText,
   BookOpen,
   Gift,
-  Wallet
+  Wallet,
+  Send,
+  Inbox
 } from 'lucide-react'
 import { useAuth } from '@/lib/AuthContext'
 import TrialBanner from '@/components/TrialBanner'
@@ -30,6 +32,16 @@ const navItems = [
     to: '/bulletins',
     label: 'Bulletins',
     icon: FileText
+  },
+  {
+    to: '/recevoir-moyennes',
+    label: 'Recevoir des moyennes',
+    icon: Inbox
+  },
+  {
+    to: '/envoyer-moyennes',
+    label: 'Envoyer au PP',
+    icon: Send
   },
   {
     to: '/whatsapp',
