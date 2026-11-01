@@ -10,6 +10,8 @@ import {
   Gift,
   Wallet,
   Lightbulb,
+  BarChart3,
+  Send,
   type LucideIcon
 } from 'lucide-react'
 
@@ -97,8 +99,54 @@ const sections: GuideSection[] = [
     link: { to: '/bulletins', label: 'Aller aux bulletins' }
   },
   {
+    id: 'pp-moyennes',
+    title: '6. Professeur principal : les moyennes générales',
+    icon: BarChart3,
+    intro: 'Si vous êtes professeur principal d’une classe, PROFNOTE calcule la moyenne générale et le rang de chaque élève à partir des moyennes de toutes les matières.',
+    steps: [
+      'Ouvrez votre classe, puis touchez « Moyennes générales (professeur principal) ».',
+      'Choisissez la période (semestre ou trimestre).',
+      'Dans « Saisie des moyennes », touchez « Matière », écrivez le nom de la matière et son coefficient (celui décidé par le professeur de cette matière), puis ajoutez.',
+      'Touchez la matière, tapez la moyenne de chaque élève, puis touchez « Enregistrer ». Laissez la case vide si l’élève n’a pas de moyenne : une case vide n’est pas un zéro.',
+      'Pour la conduite, touchez « Matière » puis « Conduite » : c’est vous qui choisissez son coefficient (mettez 0 pour ne pas la compter).',
+      'Touchez « Moyennes générales » pour voir la moyenne et le rang de chaque élève, la plus forte et la plus faible moyenne et la moyenne de la classe.',
+      'Touchez « Année » pour la moyenne annuelle : c’est la moyenne des moyennes générales de chaque période.'
+    ],
+    tip: 'Un élève à qui il manque une moyenne dans une matière n’a ni moyenne générale ni rang : l’application vous indique la matière manquante. Deux élèves qui ont la même moyenne ont le même rang (1er, 2e, 2e, 4e).'
+  },
+  {
+    id: 'pp-recevoir',
+    title: '7. Professeur principal : recevoir les moyennes de mes collègues',
+    icon: Send,
+    intro: 'Plutôt que de recopier les moyennes de chaque collègue, vous leur donnez un code : ils vous envoient leur moyenne et leur coefficient depuis leur propre compte PROFNOTE.',
+    steps: [
+      'Dans « Moyennes générales », ouvrez « Saisie des moyennes », puis descendez jusqu’à « Recevoir les moyennes de mes collègues ».',
+      'Touchez « Créer un code de partage ».',
+      'Touchez « Envoyer sur WhatsApp » pour envoyer le code à vos collègues (ou « Copier »).',
+      'Quand un collègue envoie ses moyennes, elles apparaissent dans « Envois reçus ». Touchez « Intégrer à mes moyennes ».',
+      'Si un collègue corrige puis renvoie, l’envoi est marqué « Mise à jour » : touchez « Mettre à jour mes moyennes ».'
+    ],
+    tip: 'Le code donne accès à la liste des noms de votre classe : ne l’envoyez qu’à vos collègues. « Nouveau code » remplace l’ancien, « Désactiver » bloque tous les envois. Cette partie demande internet.'
+  },
+  {
+    id: 'pp-envoyer',
+    title: '8. Envoyer ma moyenne au professeur principal',
+    icon: Send,
+    intro: 'Vous enseignez une matière dans une classe dont quelqu’un d’autre est professeur principal ? Envoyez-lui votre moyenne en quelques touches.',
+    steps: [
+      'Touchez « Envoyer au PP » dans le menu.',
+      'Saisissez le code reçu du professeur principal, puis touchez « Valider ».',
+      'Choisissez votre classe, la période, votre matière et le coefficient de votre matière.',
+      'Vérifiez chaque élève : l’application propose l’élève correspondant chez le professeur principal (« Sûr », « À vérifier » ou « Non trouvé »). Corrigez si besoin.',
+      'Les moyennes viennent de vos évaluations (même calcul que les bulletins). Vous pouvez les corriger ; laissez vide si l’élève n’a pas de note.',
+      'Touchez « Envoyer … au PP ». Si vous corrigez une note plus tard, renvoyez : l’envoi précédent est remplacé.'
+    ],
+    tip: 'Le coefficient est celui que vous décidez pour votre matière. Vos confirmations d’élèves sont mémorisées pour les prochains envois. Cette partie demande internet.',
+    link: { to: '/envoyer-moyennes', label: 'Envoyer mes moyennes' }
+  },
+  {
     id: 'whatsapp',
-    title: '6. Informer les parents par WhatsApp',
+    title: '9. Informer les parents par WhatsApp',
     icon: MessageCircle,
     intro: 'Envoyez les résultats aux parents sans recopier les numéros.',
     steps: [
@@ -111,7 +159,7 @@ const sections: GuideSection[] = [
   },
   {
     id: 'hors-ligne',
-    title: '7. Travailler sans internet',
+    title: '10. Travailler sans internet',
     icon: WifiOff,
     intro: 'PROFNOTE continue de fonctionner quand la connexion coupe.',
     steps: [
@@ -119,11 +167,11 @@ const sections: GuideSection[] = [
       'Vos modifications sont gardées sur le téléphone.',
       'Au retour d’internet, elles sont envoyées automatiquement. Vous pouvez aussi toucher « Envoyer maintenant » dans le bandeau.'
     ],
-    tip: 'Ouvrez l’application au moins une fois avec internet avant de partir en zone sans réseau, pour qu’elle prépare le mode hors ligne.'
+    tip: 'Ouvrez l’application au moins une fois avec internet avant de partir en zone sans réseau, pour qu’elle prépare le mode hors ligne. L’envoi et la réception des moyennes entre collègues (sections 7 et 8) demandent internet.'
   },
   {
     id: 'profil',
-    title: '8. Mon profil',
+    title: '11. Mon profil',
     icon: UserCircle,
     intro: 'Votre nom, votre établissement et votre téléphone apparaissent dans l’application.',
     steps: [
@@ -134,7 +182,7 @@ const sections: GuideSection[] = [
   },
   {
     id: 'abonnement',
-    title: '9. Payer mon abonnement',
+    title: '12. Payer mon abonnement',
     icon: Wallet,
     intro: 'L’abonnement coûte 1125 FCFA et reste valable 10 mois. Une bande en haut de l’écran vous rappelle les jours d’essai restants.',
     steps: [
@@ -148,7 +196,7 @@ const sections: GuideSection[] = [
   },
   {
     id: 'parrainage',
-    title: '10. Parrainer des collègues',
+    title: '13. Parrainer des collègues',
     icon: Gift,
     intro: 'Pour chaque collègue que vous parrainez et qui paie son abonnement, vous gagnez 25 FCFA. Vous pouvez retirer vos gains dès 500 FCFA.',
     steps: [
