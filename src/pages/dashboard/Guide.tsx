@@ -120,13 +120,14 @@ const sections: GuideSection[] = [
     icon: Send,
     intro: 'Plutôt que de recopier les moyennes de chaque collègue, vous leur donnez un code : ils vous envoient leur moyenne et leur coefficient depuis leur propre compte PROFNOTE.',
     steps: [
-      'Dans « Moyennes générales », ouvrez « Saisie des moyennes », puis descendez jusqu’à « Recevoir les moyennes de mes collègues ».',
-      'Touchez « Créer un code de partage ».',
+      'Touchez « Recevoir des moyennes » dans le menu, puis choisissez votre classe (vous pouvez aussi passer par la classe, puis « Moyennes générales »).',
+      'Dans « Saisie des moyennes », descendez jusqu’à « Recevoir les moyennes de mes collègues » et touchez « Créer un code de partage ».',
       'Touchez « Envoyer sur WhatsApp » pour envoyer le code à vos collègues (ou « Copier »).',
       'Quand un collègue envoie ses moyennes, elles apparaissent dans « Envois reçus ». Touchez « Intégrer à mes moyennes ».',
       'Si un collègue corrige puis renvoie, l’envoi est marqué « Mise à jour » : touchez « Mettre à jour mes moyennes ».'
     ],
-    tip: 'Le code donne accès à la liste des noms de votre classe : ne l’envoyez qu’à vos collègues. « Nouveau code » remplace l’ancien, « Désactiver » bloque tous les envois. Cette partie demande internet.'
+    tip: 'Le code donne accès à la liste des noms de votre classe : ne l’envoyez qu’à vos collègues. « Nouveau code » remplace l’ancien, « Désactiver » bloque tous les envois. Cette partie demande internet.',
+    link: { to: '/recevoir-moyennes', label: 'Recevoir des moyennes' }
   },
   {
     id: 'pp-envoyer',
