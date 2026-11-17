@@ -109,30 +109,17 @@ item.rank = lastRank
 })
 }
 
-/** Classe par rang ; les élèves sans moyenne passent en dernier (ordre alphabétique). */
-function sortByRank<
-T extends {
-student: Student
-average: number | null
-rank: number | null
-}
-
-> (items: T[]): T[] {
-return [...items].sort((a, b) => {
-if (a.average === null && b.average === null) {
-return a.student.last_name.localeCompare(
-b.student.last_name
-)
-}
-
-
-
-if (a.average === null) return 1
-if (b.average === null) return -1
-
-return (a.rank ?? 9999) - (b.rank ?? 9999)
-
+/** Classe les élèves par ordre alphabétique (nom puis prénom) ; le rang reste affiché. */
+function sortByName<T extends { student: Student }>(items: T[]): T[] {
+return [...items].sort(
+(a, b) =>
+a.student.last_name.localeCompare(b.student.last_name, 'fr', {
+sensitivity: 'base'
+}) ||
+a.student.first_name.localeCompare(b.student.first_name, 'fr', {
+sensitivity: 'base'
 })
+)
 }
 
 /** Moyenne pondérée sur 20 de chaque élève pour une liste d'évaluations. */
@@ -1642,43 +1629,13 @@ return rows
 }, [activePeriod, students, evaluations, allGrades, periodCount])
 
 const annualRanked = useMemo(
-() => sortByRank(annualResults),
+() => sortByName(annualResults),
 [annualResults]
 )
 
-const rankedStudents =
-useMemo(
-() =>
-[...studentResults].sort(
-(a, b) => {
-if (
-a.average === null &&
-b.average === null
-) {
-return a.student.last_name.localeCompare(
-b.student.last_name
-)
-}
-
-if (
-          a.average === null
-        ) {
-          return 1
-        }
-
-        if (
-          b.average === null
-        ) {
-          return -1
-        }
-
-        return (
-          (a.rank ?? 9999) -
-          (b.rank ?? 9999)
-        )
-      }
-    ),
-  [studentResults]
+const rankedStudents = useMemo(
+() => sortByName(studentResults),
+[studentResults]
 )
 
 const classAverage =
