@@ -109,6 +109,53 @@ item.rank = lastRank
 })
 }
 
+function normalizeTitle(title: string): string {
+return title
+.normalize('NFD')
+.replace(/[\u0300-\u036f]/g, '')
+.toLowerCase()
+}
+
+const ORDINAL_WORDS: Array<[RegExp, number]> = [
+[/\b(premier|premiere|1er|1ere|1ere)\b/, 1],
+[/\b(deuxieme|second|seconde|2eme|2e|2nd)\b/, 2],
+[/\b(troisieme|3eme|3e)\b/, 3],
+[/\b(quatrieme|4eme|4e)\b/, 4],
+[/\b(cinquieme|5eme|5e)\b/, 5],
+[/\b(sixieme|6eme|6e)\b/, 6],
+[/\b(septieme|7eme|7e)\b/, 7],
+[/\b(huitieme|8eme|8e)\b/, 8],
+[/\b(neuvieme|9eme|9e)\b/, 9],
+[/\b(dixieme|10eme|10e)\b/, 10]
+]
+
+/** Rang lu dans le titre : « Premier devoir » → 1, « 2ème interrogation » → 2, « Interro n°3 » → 3. */
+function ordinalFromTitle(title: string): number | null {
+const text = normalizeTitle(title)
+
+for (const [pattern, value] of ORDINAL_WORDS) {
+if (pattern.test(text)) return value
+}
+
+const digits = text.match(/(\d+)/)
+return digits ? Number(digits[1]) : null
+}
+
+/**
+ * Ordre d'affichage : le rang écrit dans le titre (1er, 2e, 3e…), sinon l'ordre de création.
+ * Ce n'est ni la date de l'évaluation ni l'ordre alphabétique.
+ */
+function compareEvaluations(a: Evaluation, b: Evaluation): number {
+const ra = ordinalFromTitle(a.title)
+const rb = ordinalFromTitle(b.title)
+
+if (ra !== null && rb !== null && ra !== rb) return ra - rb
+if (ra !== null && rb === null) return -1
+if (ra === null && rb !== null) return 1
+
+return (a.created_at ?? '').localeCompare(b.created_at ?? '')
+}
+
 /** Classe les élèves par ordre alphabétique (nom puis prénom) ; le rang reste affiché. */
 function sortByName<T extends { student: Student }>(items: T[]): T[] {
 return [...items].sort(
@@ -1388,6 +1435,41 @@ setSelectedEvaluation((current) =>
 
 }
 
+async function handleEvaluationTypeChange(
+evaluation: Evaluation,
+type: EvaluationType
+) {
+if (!user) return
+
+setErrorMessage('')
+
+const { error } = await supabase
+  .from('evaluations')
+  .update({ type })
+  .eq('id', evaluation.id)
+  .eq('teacher_id', user.id)
+
+if (error) {
+  setErrorMessage(error.message)
+  return
+}
+
+setEvaluations((current) =>
+  current.map((item) =>
+    item.id === evaluation.id
+      ? { ...item, type }
+      : item
+  )
+)
+
+setSelectedEvaluation((current) =>
+  current && current.id === evaluation.id
+    ? { ...current, type }
+    : current
+)
+
+}
+
 async function handlePeriodCountChange(count: 2 | 3) {
 if (!user || !classId || !schoolClass) return
 
@@ -1674,17 +1756,11 @@ studentResults
 )
 
 // Colonnes du carnet : interrogations d'abord, puis devoirs
-const byTitle = (a: Evaluation, b: Evaluation) =>
-a.title.localeCompare(b.title, 'fr', {
-numeric: true,
-sensitivity: 'base'
-})
-
 const interroEvaluations = useMemo(
 () =>
 visibleEvaluations
 .filter((evaluation) => evaluation.type === 'interrogation')
-.sort(byTitle),
+.sort(compareEvaluations),
 [visibleEvaluations]
 )
 
@@ -1692,7 +1768,20 @@ const devoirEvaluations = useMemo(
 () =>
 visibleEvaluations
 .filter((evaluation) => evaluation.type !== 'interrogation')
-.sort(byTitle),
+.sort(compareEvaluations),
+[visibleEvaluations]
+)
+
+// Évaluations dont le titre ne correspond pas au type choisi (ex. « Deuxième devoir » créé en interrogation)
+const mismatchedEvaluations = useMemo(
+() =>
+visibleEvaluations.filter((evaluation) => {
+const title = normalizeTitle(evaluation.title)
+
+return evaluation.type === 'interrogation'
+? title.includes('devoir')
+: title.includes('interro')
+}),
 [visibleEvaluations]
 )
 
@@ -3037,6 +3126,28 @@ return (
                   ))}
                 </select>
               </div>
+
+              <div className="mt-2 flex items-center gap-2">
+                <label className="text-xs text-primary-400">
+                  Type
+                </label>
+
+                <select
+                  className="input-field !w-auto text-xs"
+                  value={selectedEvaluation.type}
+                  onChange={(e) =>
+                    void handleEvaluationTypeChange(
+                      selectedEvaluation,
+                      e.target.value as EvaluationType
+                    )
+                  }
+                >
+                  <option value="interrogation">Interrogation</option>
+                  <option value="devoir">Devoir</option>
+                  <option value="composition">Composition</option>
+                  <option value="examen">Examen</option>
+                </select>
+              </div>
             </div>
           </div>
 
@@ -3430,6 +3541,25 @@ return (
           </button>
         </div>
       </div>
+
+      {mismatchedEvaluations.length > 0 && (
+        <div className="mb-4 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm text-orange-800">
+          <p className="font-medium">
+            Une évaluation n'est pas dans le bon groupe
+          </p>
+
+          <p className="mt-1 text-xs">
+            {mismatchedEvaluations
+              .map((evaluation) => `« ${evaluation.title} »`)
+              .join(', ')}{' '}
+            {mismatchedEvaluations.length > 1
+              ? 'ont un type qui ne correspond pas à leur titre'
+              : 'a un type qui ne correspond pas à son titre'}
+            . Allez dans « Évaluations », ouvrez-la et changez son
+            type (Interrogation ou Devoir).
+          </p>
+        </div>
+      )}
 
       {evaluations.length ===
       0 ? (
