@@ -83,7 +83,7 @@ const sections: GuideSection[] = [
       'Une note supérieure à la note maximale est refusée : corrigez-la.',
       'Touchez « Enregistrer » pour sauvegarder toutes les notes.'
     ],
-    tip: 'Les moyennes sont calculées automatiquement : vous n’avez aucun calcul à faire.'
+    tip: 'Les moyennes sont calculées automatiquement : vous n’avez aucun calcul à faire. Dans « Résultats », la moyenne des interrogations et la moyenne des devoirs sont affichées séparément, puis la moyenne générale.'
   },
   {
     id: 'bulletins',

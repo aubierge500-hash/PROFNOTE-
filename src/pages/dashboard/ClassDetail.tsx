@@ -58,6 +58,10 @@ type GradeMap = Record<string, Grade>
 type StudentResult = {
 student: Student
 average: number | null
+/** Moyenne des interrogations uniquement (sur 20). */
+interroAverage: number | null
+/** Moyenne des devoirs uniquement (sur 20) : tout ce qui n'est pas une interrogation. */
+devoirAverage: number | null
 rank: number | null
 graded: number
 missing: number
@@ -140,6 +144,10 @@ allGrades: GradeMap
 const results: StudentResult[] = students.map((student) => {
 let weightedTotal = 0
 let coefficientTotal = 0
+let interroTotal = 0
+let interroCoefficient = 0
+let devoirTotal = 0
+let devoirCoefficient = 0
 let graded = 0
 let missing = 0
 let absent = 0
@@ -168,6 +176,15 @@ for (const evaluation of evaluations) {
 
   weightedTotal += normalized * evaluation.coefficient
   coefficientTotal += evaluation.coefficient
+
+  if (evaluation.type === 'interrogation') {
+    interroTotal += normalized * evaluation.coefficient
+    interroCoefficient += evaluation.coefficient
+  } else {
+    devoirTotal += normalized * evaluation.coefficient
+    devoirCoefficient += evaluation.coefficient
+  }
+
   graded++
 }
 
@@ -176,6 +193,14 @@ return {
   average:
     coefficientTotal > 0
       ? weightedTotal / coefficientTotal
+      : null,
+  interroAverage:
+    interroCoefficient > 0
+      ? interroTotal / interroCoefficient
+      : null,
+  devoirAverage:
+    devoirCoefficient > 0
+      ? devoirTotal / devoirCoefficient
       : null,
   rank: null,
   graded,
@@ -1669,6 +1694,82 @@ return mean(
       )
   )
 }, [activePeriod, annualResults, studentResults])
+
+// Moyennes de classe séparées : interrogations / devoirs (vue période uniquement)
+const classInterroAverage = useMemo(
+() =>
+mean(
+studentResults
+.map((item) => item.interroAverage)
+.filter((value): value is number => value !== null)
+),
+[studentResults]
+)
+
+const classDevoirAverage = useMemo(
+() =>
+mean(
+studentResults
+.map((item) => item.devoirAverage)
+.filter((value): value is number => value !== null)
+),
+[studentResults]
+)
+
+// Colonnes du carnet : interrogations d'abord, puis devoirs
+const interroEvaluations = useMemo(
+() =>
+visibleEvaluations.filter(
+(evaluation) => evaluation.type === 'interrogation'
+),
+[visibleEvaluations]
+)
+
+const devoirEvaluations = useMemo(
+() =>
+visibleEvaluations.filter(
+(evaluation) => evaluation.type !== 'interrogation'
+),
+[visibleEvaluations]
+)
+
+const renderEvaluationHeader = (evaluation: Evaluation) => (
+<th
+key={evaluation.id}
+className="py-3 px-2 text-center"
+>
+<div>{evaluation.title}</div>
+
+<div className="font-normal">
+{evaluation.subject}
+{' · '}C{evaluation.coefficient}
+</div>
+</th>
+)
+
+const renderEvaluationCell = (
+evaluation: Evaluation,
+studentId: string
+) => {
+const grade = allGrades[`${evaluation.id}:${studentId}`]
+
+return (
+<td
+key={evaluation.id}
+className="py-3 px-2 text-center"
+>
+{!grade ? (
+'—'
+) : grade.is_absent ? (
+<span className="text-red-600">ABS</span>
+) : grade.score === null ? (
+'—'
+) : (
+`${grade.score}/${evaluation.max_score}`
+)}
+</td>
+)
+}
 
 const gradebookStats =
 useMemo(() => {
@@ -3264,17 +3365,47 @@ return (
           </p>
         </div>
 
-        <div className="rounded-lg bg-primary-50 px-4 py-2">
-          <p className="text-xs text-primary-400">
-            Moyenne de la classe
-          </p>
+        <div className="flex flex-wrap gap-2">
+          {activePeriod !== 0 && (
+            <>
+              <div className="rounded-lg bg-primary-50 px-4 py-2">
+                <p className="text-xs text-primary-400">
+                  Moyenne des interrogations
+                </p>
 
-          <p className="text-xl font-semibold text-primary-800">
-            {classAverage ===
-            null
-              ? '—'
-              : `${classAverage.toFixed(2)}/20`}
-          </p>
+                <p className="text-xl font-semibold text-primary-800">
+                  {classInterroAverage === null
+                    ? '—'
+                    : `${classInterroAverage.toFixed(2)}/20`}
+                </p>
+              </div>
+
+              <div className="rounded-lg bg-primary-50 px-4 py-2">
+                <p className="text-xs text-primary-400">
+                  Moyenne des devoirs
+                </p>
+
+                <p className="text-xl font-semibold text-primary-800">
+                  {classDevoirAverage === null
+                    ? '—'
+                    : `${classDevoirAverage.toFixed(2)}/20`}
+                </p>
+              </div>
+            </>
+          )}
+
+          <div className="rounded-lg bg-primary-50 px-4 py-2">
+            <p className="text-xs text-primary-400">
+              Moyenne de la classe
+            </p>
+
+            <p className="text-xl font-semibold text-primary-800">
+              {classAverage ===
+              null
+                ? '—'
+                : `${classAverage.toFixed(2)}/20`}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -3438,36 +3569,24 @@ return (
                   Élève
                 </th>
 
-                {visibleEvaluations.map(
-                  (evaluation) => (
-                    <th
-                      key={
-                        evaluation.id
-                      }
-                      className="py-3 px-2 text-center"
-                    >
-                      <div>
-                        {
-                          evaluation.title
-                        }
-                      </div>
+                {interroEvaluations.map(renderEvaluationHeader)}
 
-                      <div className="font-normal">
-                        {
-                          evaluation.subject
-                        }
-                        {' · '}
-                        C
-                        {
-                          evaluation.coefficient
-                        }
-                      </div>
-                    </th>
-                  )
+                {interroEvaluations.length > 0 && (
+                  <th className="py-3 px-2 text-center bg-primary-50 text-primary-700">
+                    Moy. interrogations
+                  </th>
+                )}
+
+                {devoirEvaluations.map(renderEvaluationHeader)}
+
+                {devoirEvaluations.length > 0 && (
+                  <th className="py-3 px-2 text-center bg-primary-50 text-primary-700">
+                    Moy. devoirs
+                  </th>
                 )}
 
                 <th className="py-3 px-2 text-center">
-                  Moyenne
+                  Moyenne générale
                 </th>
 
                 <th className="py-3 px-2 text-center">
@@ -3503,37 +3622,34 @@ return (
                       }
                     </td>
 
-                    {visibleEvaluations.map(
-                      (
-                        evaluation
-                      ) => {
-                        const grade =
-                          allGrades[
-                            `${evaluation.id}:${result.student.id}`
-                          ]
+                    {interroEvaluations.map((evaluation) =>
+                      renderEvaluationCell(
+                        evaluation,
+                        result.student.id
+                      )
+                    )}
 
-                        return (
-                          <td
-                            key={
-                              evaluation.id
-                            }
-                            className="py-3 px-2 text-center"
-                          >
-                            {!grade ? (
-                              '—'
-                            ) : grade.is_absent ? (
-                              <span className="text-red-600">
-                                ABS
-                              </span>
-                            ) : grade.score ===
-                              null ? (
-                              '—'
-                            ) : (
-                              `${grade.score}/${evaluation.max_score}`
-                            )}
-                          </td>
-                        )
-                      }
+                    {interroEvaluations.length > 0 && (
+                      <td className="py-3 px-2 text-center font-semibold bg-primary-50">
+                        {result.interroAverage === null
+                          ? '—'
+                          : `${result.interroAverage.toFixed(2)}/20`}
+                      </td>
+                    )}
+
+                    {devoirEvaluations.map((evaluation) =>
+                      renderEvaluationCell(
+                        evaluation,
+                        result.student.id
+                      )
+                    )}
+
+                    {devoirEvaluations.length > 0 && (
+                      <td className="py-3 px-2 text-center font-semibold bg-primary-50">
+                        {result.devoirAverage === null
+                          ? '—'
+                          : `${result.devoirAverage.toFixed(2)}/20`}
+                      </td>
                     )}
 
                     <td className="py-3 px-2 text-center font-bold">
