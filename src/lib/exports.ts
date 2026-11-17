@@ -11,6 +11,7 @@ interface EvalRow {
   eval_date: string
   coefficient: number
   max_score: number
+  type: string
 }
 
 interface GradeRow {
@@ -35,7 +36,7 @@ interface RankingRow {
 async function fetchClassData(classId: string) {
   const [studentsRes, evaluationsRes, rankingsRes] = await Promise.all([
     supabase.from('students').select('id, last_name, first_name').eq('class_id', classId).eq('is_active', true).order('last_name'),
-    supabase.from('evaluations').select('id, title, subject, eval_date, coefficient, max_score').eq('class_id', classId).order('eval_date'),
+    supabase.from('evaluations').select('id, title, subject, eval_date, coefficient, max_score, type').eq('class_id', classId).order('eval_date'),
     supabase.from('student_rankings').select('student_id, average, rank').eq('class_id', classId)
   ])
 
@@ -75,14 +76,45 @@ export async function exportClassExcel(classId: string, className: string, profi
   const rankingByStudent = new Map(rankings.map((r) => [r.student_id, r]))
   const gradeByKey = new Map(grades.map((g) => [`${g.student_id}_${g.evaluation_id}`, g]))
 
-  const headerRow = ['Nom', 'Prénom', ...evaluations.map((e) => `${e.title} (${e.subject})`), 'Moyenne /20', 'Rang']
+  // Interrogations d'abord, puis devoirs : chaque groupe a sa propre moyenne
+  const interroEvals = evaluations.filter((e) => e.type === 'interrogation')
+  const devoirEvals = evaluations.filter((e) => e.type !== 'interrogation')
+
+  const headerRow = [
+    'Nom',
+    'Prénom',
+    ...interroEvals.map((e) => `${e.title} (${e.subject})`),
+    ...(interroEvals.length > 0 ? ['Moy. interrogations /20'] : []),
+    ...devoirEvals.map((e) => `${e.title} (${e.subject})`),
+    ...(devoirEvals.length > 0 ? ['Moy. devoirs /20'] : []),
+    'Moyenne générale /20',
+    'Rang'
+  ]
+
+  /** Moyenne pondérée sur 20 d'un élève pour un groupe d'évaluations ('' si aucune note). */
+  const groupAverage = (studentId: string, group: EvalRow[]): number | string => {
+    let total = 0
+    let coefficients = 0
+    for (const ev of group) {
+      const g = gradeByKey.get(`${studentId}_${ev.id}`)
+      if (!g || g.is_absent || g.score == null) continue
+      total += (g.score / ev.max_score) * 20 * ev.coefficient
+      coefficients += ev.coefficient
+    }
+    return coefficients > 0 ? Math.round((total / coefficients) * 100) / 100 : ''
+  }
+
+  const gradeCell = (studentId: string, ev: EvalRow): string | number => {
+    const g = gradeByKey.get(`${studentId}_${ev.id}`)
+    return g?.is_absent ? 'ABS' : g?.score != null ? g.score : ''
+  }
 
   const dataRows = students.map((s) => {
     const row: (string | number)[] = [s.last_name, s.first_name]
-    for (const ev of evaluations) {
-      const g = gradeByKey.get(`${s.id}_${ev.id}`)
-      row.push(g?.is_absent ? 'ABS' : g?.score != null ? g.score : '')
-    }
+    for (const ev of interroEvals) row.push(gradeCell(s.id, ev))
+    if (interroEvals.length > 0) row.push(groupAverage(s.id, interroEvals))
+    for (const ev of devoirEvals) row.push(gradeCell(s.id, ev))
+    if (devoirEvals.length > 0) row.push(groupAverage(s.id, devoirEvals))
     const ranking = rankingByStudent.get(s.id)
     row.push(ranking?.average ?? '')
     row.push(ranking?.rank ?? '')
