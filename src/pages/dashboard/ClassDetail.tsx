@@ -1717,19 +1717,25 @@ studentResults
 )
 
 // Colonnes du carnet : interrogations d'abord, puis devoirs
+const byTitle = (a: Evaluation, b: Evaluation) =>
+a.title.localeCompare(b.title, 'fr', {
+numeric: true,
+sensitivity: 'base'
+})
+
 const interroEvaluations = useMemo(
 () =>
-visibleEvaluations.filter(
-(evaluation) => evaluation.type === 'interrogation'
-),
+visibleEvaluations
+.filter((evaluation) => evaluation.type === 'interrogation')
+.sort(byTitle),
 [visibleEvaluations]
 )
 
 const devoirEvaluations = useMemo(
 () =>
-visibleEvaluations.filter(
-(evaluation) => evaluation.type !== 'interrogation'
-),
+visibleEvaluations
+.filter((evaluation) => evaluation.type !== 'interrogation')
+.sort(byTitle),
 [visibleEvaluations]
 )
 
